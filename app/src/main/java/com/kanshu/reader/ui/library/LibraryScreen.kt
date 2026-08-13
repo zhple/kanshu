@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -58,6 +59,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -81,6 +83,7 @@ import com.kanshu.reader.data.prefs.AppThemeMode
 import com.kanshu.reader.update.AppUpdateInfo
 import com.kanshu.reader.update.UpdateChecker
 import kotlinx.coroutines.launch
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -109,6 +112,9 @@ fun LibraryScreen(
     var importing by remember { mutableStateOf(false) }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    var updatingApk by remember { mutableStateOf(false) }
+    var updateProgress by remember { mutableFloatStateOf(0f) }
+    var pendingInstallFile by remember { mutableStateOf<File?>(null) }
     var showCreateFolder by remember { mutableStateOf(false) }
     var folderNameInput by remember { mutableStateOf("") }
     var pendingDeleteBook by remember { mutableStateOf<BookEntity?>(null) }
@@ -120,6 +126,54 @@ fun LibraryScreen(
     var showTokenDialog by remember { mutableStateOf(false) }
     var tokenInput by remember { mutableStateOf("") }
     var pendingUploadBook by remember { mutableStateOf<BookEntity?>(null) }
+
+
+    val installPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        val file = pendingInstallFile
+        if (file != null && UpdateChecker.canInstallPackages(context)) {
+            runCatching { UpdateChecker.installApk(context, file) }
+                .onFailure { err ->
+                    scope.launch {
+                        snackbarHostState.showSnackbar(err.message ?: "无法打开安装界面")
+                    }
+                }
+            pendingInstallFile = null
+        } else if (!UpdateChecker.canInstallPackages(context)) {
+            scope.launch {
+                snackbarHostState.showSnackbar("仍未允许安装未知应用，无法自动更新")
+            }
+        }
+    }
+
+    fun startInAppUpdate(info: AppUpdateInfo) {
+        scope.launch {
+            updatingApk = true
+            updateProgress = 0f
+            val result = UpdateChecker.downloadApk(context, info) { p ->
+                updateProgress = p
+            }
+            updatingApk = false
+            result.onSuccess { file ->
+                updateInfo = null
+                if (!UpdateChecker.canInstallPackages(context)) {
+                    pendingInstallFile = file
+                    snackbarHostState.showSnackbar("请允许「看书」安装未知应用，然后返回继续安装")
+                    installPermissionLauncher.launch(
+                        UpdateChecker.installPermissionSettingsIntent(context)
+                    )
+                } else {
+                    runCatching { UpdateChecker.installApk(context, file) }
+                        .onFailure {
+                            snackbarHostState.showSnackbar(it.message ?: "无法打开安装界面")
+                        }
+                }
+            }.onFailure {
+                snackbarHostState.showSnackbar(it.message ?: "下载失败")
+            }
+        }
+    }
 
     val inFolder = currentFolderId != null
 
@@ -638,21 +692,47 @@ fun LibraryScreen(
 
     updateInfo?.let { info ->
         AlertDialog(
-            onDismissRequest = { updateInfo = null },
+            onDismissRequest = {
+                if (!updatingApk) updateInfo = null
+            },
             title = { Text("发现新版本 v${info.versionName}") },
             text = {
-                Text(info.releaseNotes.ifBlank { "有可用更新，建议升级。" })
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(info.releaseNotes.ifBlank { "有可用更新，建议升级。" })
+                    if (updatingApk) {
+                        Text("正在下载安装包… ${(updateProgress * 100).toInt()}%")
+                        LinearProgressIndicator(
+                            progress = { updateProgress.coerceIn(0f, 1f) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        Text(
+                            "将在应用内下载，完成后自动打开安装界面。系统会再确认一次安装。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        UpdateChecker.openDownload(context, info.apkUrl)
-                        updateInfo = null
-                    }
-                ) { Text("下载更新") }
+                    onClick = { startInAppUpdate(info) },
+                    enabled = !updatingApk
+                ) { Text(if (updatingApk) "下载中…" else "立即更新") }
             },
             dismissButton = {
-                TextButton(onClick = { updateInfo = null }) { Text("稍后") }
+                Row {
+                    TextButton(
+                        onClick = {
+                            UpdateChecker.openDownloadPage(context, info.apkUrl)
+                        },
+                        enabled = !updatingApk
+                    ) { Text("浏览器下载") }
+                    TextButton(
+                        onClick = { updateInfo = null },
+                        enabled = !updatingApk
+                    ) { Text("稍后") }
+                }
             }
         )
     }
