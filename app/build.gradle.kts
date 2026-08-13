@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -13,8 +15,8 @@ android {
         applicationId = "com.kanshu.reader"
         minSdk = 24
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.4.0"
+        versionCode = 8
+        versionName = "1.4.1"
 
         // 自动更新：指向 GitHub Releases latest API
         buildConfigField(
@@ -36,6 +38,22 @@ android {
         buildConfigField("String", "GITHUB_OWNER", "\"zhple\"")
         buildConfigField("String", "GITHUB_REPO", "\"kanshu\"")
         buildConfigField("String", "GITHUB_BRANCH", "\"main\"")
+
+        // 可选：从 local.properties 注入默认上传 Token（不进 git），装好即可上传
+        val localProps = Properties()
+        val localFile = rootProject.file("local.properties")
+        if (localFile.exists()) {
+            localFile.inputStream().use { localProps.load(it) }
+        }
+        val uploadToken = (localProps.getProperty("github.upload.token") ?: "")
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+        buildConfigField("String", "DEFAULT_GITHUB_TOKEN", "\"$uploadToken\"")
+        buildConfigField(
+            "boolean",
+            "HAS_DEFAULT_GITHUB_TOKEN",
+            if (uploadToken.isNotBlank()) "true" else "false"
+        )
     }
 
     buildTypes {

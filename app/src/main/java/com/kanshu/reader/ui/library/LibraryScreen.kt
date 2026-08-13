@@ -410,23 +410,33 @@ fun LibraryScreen(
                 showTokenDialog = false
                 pendingUploadBook = null
             },
-            title = { Text("GitHub 上传设置") },
+                    title = { Text("上传设置（可选）") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "填写具有 Contents 写权限的 Personal Access Token，用于把本地书推到 zhple/kanshu 的 default-books。",
+                        if (BuildConfig.HAS_DEFAULT_GITHUB_TOKEN) {
+                            "当前安装包已内置上传权限，一般不用再填。只有换账号时才需要改 Token。"
+                        } else {
+                            "填写 GitHub Token 后才能上传。更省事的做法：用已内置权限的安装包。"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        "当前状态：${if (hasGithubToken) "已配置 Token" else "未配置"}",
+                        "状态：${
+                            when {
+                                hasGithubToken && BuildConfig.HAS_DEFAULT_GITHUB_TOKEN -> "可用（已内置）"
+                                hasGithubToken -> "可用（手动配置）"
+                                else -> "不可用"
+                            }
+                        }",
                         style = MaterialTheme.typography.labelMedium
                     )
                     OutlinedTextField(
                         value = tokenInput,
                         onValueChange = { tokenInput = it },
                         singleLine = true,
-                        label = { Text("GitHub Token") },
+                        label = { Text("自定义 Token（可留空）") },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         modifier = Modifier.fillMaxWidth()

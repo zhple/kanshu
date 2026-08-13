@@ -27,8 +27,11 @@ class GithubBooksUploader(
 
     suspend fun uploadBook(book: BookEntity): Result<UploadResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val token = themePreferences.githubToken.first().trim()
-            require(token.isNotEmpty()) { "请先在设置里填写 GitHub Token" }
+            val saved = themePreferences.githubToken.first().trim()
+            val token = saved.ifBlank { BuildConfig.DEFAULT_GITHUB_TOKEN.trim() }
+            require(token.isNotEmpty()) {
+                "还没配置上传权限。请点设置填写 Token，或使用已内置权限的安装包。"
+            }
 
             val file = bookRepository.resolveFile(book)
             require(file.exists() && file.length() > 0L) { "本地文件不存在" }

@@ -3,6 +3,7 @@ package com.kanshu.reader.ui.library
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.kanshu.reader.BuildConfig
 import com.kanshu.reader.data.db.BookEntity
 import com.kanshu.reader.data.db.FolderEntity
 import com.kanshu.reader.data.prefs.AppThemeMode
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -49,8 +51,8 @@ class LibraryViewModel(
     val uploading: StateFlow<Boolean> = _uploading.asStateFlow()
 
     val hasGithubToken: StateFlow<Boolean> = themePreferences.githubToken
-        .combine(_sourceFilter) { token, _ -> token.isNotBlank() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+        .map { token -> token.isNotBlank() || BuildConfig.HAS_DEFAULT_GITHUB_TOKEN }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BuildConfig.HAS_DEFAULT_GITHUB_TOKEN)
 
     val folders: StateFlow<List<FolderEntity>> = bookRepository.observeFolders()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
