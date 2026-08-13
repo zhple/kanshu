@@ -1,40 +1,72 @@
 {
-  "version": 2,
+  "version": 6,
+  "folders": [
+    "仓库书"
+  ],
   "books": [
     {
       "id": "dianqi-maxituan",
       "title": "电气马戏团",
       "author": "仓库默认",
       "file": "dianqi-maxituan.epub",
-      "format": "EPUB"
+      "format": "EPUB",
+      "folder": "仓库书"
     },
     {
       "id": "txt-9296",
       "title": "雪崎绘理的战斗",
       "author": "仓库默认",
       "file": "txt-9296.txt",
-      "format": "TXT"
+      "format": "TXT",
+      "folder": "仓库书"
     },
     {
       "id": "txt-172785",
       "title": "死者社长",
       "author": "仓库默认",
       "file": "txt-172785.txt",
-      "format": "TXT"
+      "format": "TXT",
+      "folder": "仓库书"
     },
     {
       "id": "txt-72775",
       "title": "葬礼之夜",
       "author": "仓库默认",
       "file": "txt-72775.txt",
-      "format": "TXT"
+      "format": "TXT",
+      "folder": "仓库书"
     },
     {
       "id": "txt-1",
       "title": "渴望死亡的小丑",
       "author": "仓库默认",
       "file": "txt-1.txt",
-      "format": "TXT"
+      "format": "TXT",
+      "folder": "仓库书"
+    },
+    {
+      "id": "user-cdc9079bc9",
+      "title": "献给阿尔吉侬的花束",
+      "author": "丹尼尔·凯斯",
+      "file": "user-cdc9079bc9.epub",
+      "format": "EPUB",
+      "folder": "仓库书"
+    },
+    {
+      "id": "user-de7f8b8c4b",
+      "title": "献给阿尔吉侬的花束",
+      "author": "未知作者",
+      "file": "user-de7f8b8c4b.txt",
+      "format": "TXT",
+      "folder": "仓库书"
+    },
+    {
+      "id": "user-3584265174",
+      "title": "cross channel",
+      "author": "未知作者",
+      "file": "user-3584265174.txt",
+      "format": "TXT",
+      "folder": "仓库书"
     }
   ]
 }

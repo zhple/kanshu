@@ -2,7 +2,6 @@ package com.kanshu.reader.data.remote
 
 import android.content.Context
 import com.kanshu.reader.BuildConfig
-import com.kanshu.reader.data.db.BookEntity
 import com.kanshu.reader.data.repo.BookRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -18,6 +17,7 @@ class DefaultBooksSync(
         val added: Int = 0,
         val skipped: Int = 0,
         val failed: Int = 0,
+        val reassigned: Int = 0,
         val message: String = ""
     )
 
@@ -25,16 +25,26 @@ class DefaultBooksSync(
         val catalog = loadCatalog()
             ?: return@withContext SyncResult(message = "无法读取默认书目录")
 
-        // 确保有「仓库书」文件夹
-        val folderId = bookRepository.ensureFolder("仓库书")
+        // 先确保远程分类文件夹存在
+        for (folderName in catalog.folders) {
+            bookRepository.ensureFolder(folderName)
+        }
+        bookRepository.ensureFolder(DEFAULT_REMOTE_FOLDER)
 
         var added = 0
         var skipped = 0
         var failed = 0
+        var moved = 0
 
         for (spec in catalog.books) {
+            val folderName = spec.folder.ifBlank { DEFAULT_REMOTE_FOLDER }
+            val folderId = bookRepository.ensureFolder(folderName)
             val existing = bookRepository.getByRemoteId(spec.id)
             if (existing != null) {
+                if (existing.folderId != folderId) {
+                    bookRepository.moveBook(existing.id, folderId)
+                    moved++
+                }
                 skipped++
                 continue
             }
@@ -61,8 +71,11 @@ class DefaultBooksSync(
             added = added,
             skipped = skipped,
             failed = failed,
+            reassigned = moved,
             message = when {
+                added > 0 && moved > 0 -> "已同步 $added 本仓库书，并更新 $moved 本分类"
                 added > 0 -> "已同步 $added 本仓库书"
+                moved > 0 -> "已更新 $moved 本仓库书的分类"
                 failed > 0 -> "有 $failed 本仓库书同步失败"
                 else -> "仓库书已是最新"
             }
@@ -70,7 +83,6 @@ class DefaultBooksSync(
     }
 
     private fun loadCatalog(): RemoteCatalog? {
-        // 优先远程目录（更新后能拿到新增书），失败则用 APK 内置
         val remote = runCatching {
             val url = BuildConfig.DEFAULT_BOOKS_CATALOG_URL
             if (url.isBlank()) return@runCatching null

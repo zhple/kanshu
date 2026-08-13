@@ -99,7 +99,8 @@ class BookRepository(
     suspend fun createFolder(name: String): Long = withContext(Dispatchers.IO) {
         val trimmed = name.trim()
         require(trimmed.isNotEmpty()) { "文件夹名称不能为空" }
-        folderDao.insert(FolderEntity(name = trimmed))
+        folderDao.getAllOnce().firstOrNull { it.name == trimmed }?.id
+            ?: folderDao.insert(FolderEntity(name = trimmed))
     }
 
     suspend fun renameFolder(id: Long, name: String) = withContext(Dispatchers.IO) {

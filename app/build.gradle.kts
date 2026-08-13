@@ -13,8 +13,8 @@ android {
         applicationId = "com.kanshu.reader"
         minSdk = 24
         targetSdk = 35
-        versionCode = 11
-        versionName = "1.4.4"
+        versionCode = 12
+        versionName = "1.5.0"
 
         // 自动更新：指向 GitHub Releases latest API
         buildConfigField(

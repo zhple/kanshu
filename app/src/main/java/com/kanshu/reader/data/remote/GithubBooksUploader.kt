@@ -3,18 +3,17 @@ package com.kanshu.reader.data.remote
 import android.util.Base64
 import com.kanshu.reader.BuildConfig
 import com.kanshu.reader.data.db.BookEntity
+import com.kanshu.reader.data.prefs.ThemePreferences
 import com.kanshu.reader.data.repo.BookRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.util.UUID
-import com.kanshu.reader.data.prefs.ThemePreferences
 
 class GithubBooksUploader(
     private val bookRepository: BookRepository,
@@ -27,11 +26,7 @@ class GithubBooksUploader(
 
     suspend fun uploadBook(book: BookEntity): Result<UploadResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val token = themePreferences.githubToken.first().trim()
-            require(token.isNotEmpty()) {
-                "还没配置上传权限。请点右上角设置，填写 GitHub Token 后再上传。"
-            }
-
+            val token = requireToken()
             val file = bookRepository.resolveFile(book)
             require(file.exists() && file.length() > 0L) { "本地文件不存在" }
             require(file.length() < 40L * 1024 * 1024) { "文件过大（建议小于 40MB）" }
@@ -45,6 +40,7 @@ class GithubBooksUploader(
             }
             val remoteFileName = "$remoteId$ext"
             val path = "default-books/$remoteFileName"
+            val folderName = resolveFolderName(book.folderId)
 
             putContent(
                 token = token,
@@ -53,18 +49,19 @@ class GithubBooksUploader(
                 message = "Add book: ${book.title}"
             )
 
-            upsertCatalog(
+            upsertBookInCatalog(
                 token = token,
                 spec = RemoteBookSpec(
                     id = remoteId,
                     title = book.title,
                     author = book.author.ifBlank { "用户上传" },
                     file = remoteFileName,
-                    format = book.format.uppercase()
+                    format = book.format.uppercase(),
+                    folder = folderName
                 )
             )
 
-            val folderId = bookRepository.ensureFolder("仓库书")
+            val folderId = bookRepository.ensureFolder(folderName)
             bookRepository.markAsRemote(
                 bookId = book.id,
                 remoteId = remoteId,
@@ -73,49 +70,167 @@ class GithubBooksUploader(
 
             UploadResult(
                 remoteId = remoteId,
-                message = "已上传到仓库：${book.title}"
+                message = "已上传到仓库：${book.title}（$folderName）"
             )
         }
     }
 
-    private fun upsertCatalog(token: String, spec: RemoteBookSpec) {
+    /** 把分类名写入远程 catalog.folders */
+    suspend fun ensureRemoteFolder(folderName: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val name = folderName.trim().ifBlank { DEFAULT_REMOTE_FOLDER }
+            val token = requireToken()
+            mutateCatalog(token, "Add folder: $name") { root ->
+                ensureFoldersArray(root).also { arr ->
+                    if (!(0 until arr.length()).any { arr.optString(it) == name }) {
+                        arr.put(name)
+                    }
+                }
+            }
+        }
+    }
+
+    /** 更新某本仓库书的远程分类 */
+    suspend fun updateRemoteBookFolder(remoteId: String, folderName: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val name = folderName.trim().ifBlank { DEFAULT_REMOTE_FOLDER }
+                val token = requireToken()
+                mutateCatalog(token, "Move book $remoteId to $name") { root ->
+                    ensureFoldersArray(root).also { arr ->
+                        if (!(0 until arr.length()).any { arr.optString(it) == name }) {
+                            arr.put(name)
+                        }
+                    }
+                    val books = root.optJSONArray("books") ?: JSONArray().also { root.put("books", it) }
+                    var found = false
+                    for (i in 0 until books.length()) {
+                        val item = books.getJSONObject(i)
+                        if (item.optString("id") == remoteId) {
+                            item.put("folder", name)
+                            found = true
+                            break
+                        }
+                    }
+                    require(found) { "远程目录里找不到这本书，请先上传到仓库" }
+                }
+            }
+        }
+
+    /**
+     * 删除远程分类：从 folders 移除；该书分类改回默认「仓库书」。
+     */
+    suspend fun removeRemoteFolder(folderName: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val name = folderName.trim()
+            require(name.isNotBlank()) { "分类名为空" }
+            require(name != DEFAULT_REMOTE_FOLDER) { "默认分类「仓库书」不能删除" }
+            val token = requireToken()
+            mutateCatalog(token, "Remove folder: $name") { root ->
+                val old = root.optJSONArray("folders")
+                val next = JSONArray()
+                if (old != null) {
+                    for (i in 0 until old.length()) {
+                        val n = old.optString(i)
+                        if (n.isNotBlank() && n != name) next.put(n)
+                    }
+                }
+                if (!(0 until next.length()).any { next.optString(it) == DEFAULT_REMOTE_FOLDER }) {
+                    next.put(DEFAULT_REMOTE_FOLDER)
+                }
+                root.put("folders", next)
+
+                val books = root.optJSONArray("books") ?: return@mutateCatalog
+                for (i in 0 until books.length()) {
+                    val item = books.getJSONObject(i)
+                    if (item.optString("folder") == name) {
+                        item.put("folder", DEFAULT_REMOTE_FOLDER)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun resolveFolderName(folderId: Long?): String {
+        if (folderId == null) return DEFAULT_REMOTE_FOLDER
+        return bookRepository.getFolder(folderId)?.name?.trim()?.ifBlank { null }
+            ?: DEFAULT_REMOTE_FOLDER
+    }
+
+    private suspend fun requireToken(): String {
+        val token = themePreferences.githubToken.first().trim()
+        require(token.isNotEmpty()) {
+            "还没配置上传权限。请点右上角设置，填写 GitHub Token 后再同步分类。"
+        }
+        return token
+    }
+
+    private fun upsertBookInCatalog(token: String, spec: RemoteBookSpec) {
+        mutateCatalog(token, "Update catalog for ${spec.id}") { root ->
+            ensureFoldersArray(root).also { arr ->
+                val folder = spec.folder.ifBlank { DEFAULT_REMOTE_FOLDER }
+                if (!(0 until arr.length()).any { arr.optString(it) == folder }) {
+                    arr.put(folder)
+                }
+            }
+            val books = root.optJSONArray("books") ?: JSONArray().also { root.put("books", it) }
+            var found = false
+            for (i in 0 until books.length()) {
+                val item = books.getJSONObject(i)
+                if (item.optString("id") == spec.id) {
+                    item.put("title", spec.title)
+                    item.put("author", spec.author)
+                    item.put("file", spec.file)
+                    item.put("format", spec.format)
+                    item.put("folder", spec.folder.ifBlank { DEFAULT_REMOTE_FOLDER })
+                    found = true
+                    break
+                }
+            }
+            if (!found) {
+                books.put(
+                    JSONObject()
+                        .put("id", spec.id)
+                        .put("title", spec.title)
+                        .put("author", spec.author)
+                        .put("file", spec.file)
+                        .put("format", spec.format)
+                        .put("folder", spec.folder.ifBlank { DEFAULT_REMOTE_FOLDER })
+                )
+                root.put("version", root.optInt("version", 1) + 1)
+            }
+        }
+    }
+
+    private fun ensureFoldersArray(root: JSONObject): JSONArray {
+        val existing = root.optJSONArray("folders")
+        if (existing != null) return existing
+        val created = JSONArray().put(DEFAULT_REMOTE_FOLDER)
+        root.put("folders", created)
+        return created
+    }
+
+    private fun mutateCatalog(token: String, message: String, block: (JSONObject) -> Unit) {
         val path = "default-books/catalog.json"
         val existing = getContent(token, path)
         val root = if (existing != null) {
             JSONObject(String(existing.content, StandardCharsets.UTF_8))
         } else {
-            JSONObject().put("version", 1).put("books", JSONArray())
+            JSONObject()
+                .put("version", 1)
+                .put("folders", JSONArray().put(DEFAULT_REMOTE_FOLDER))
+                .put("books", JSONArray())
         }
-        val books = root.optJSONArray("books") ?: JSONArray().also { root.put("books", it) }
-        var found = false
-        for (i in 0 until books.length()) {
-            val item = books.getJSONObject(i)
-            if (item.optString("id") == spec.id) {
-                item.put("title", spec.title)
-                item.put("author", spec.author)
-                item.put("file", spec.file)
-                item.put("format", spec.format)
-                found = true
-                break
-            }
+        block(root)
+        if (!root.has("folders")) {
+            ensureFoldersArray(root)
         }
-        if (!found) {
-            books.put(
-                JSONObject()
-                    .put("id", spec.id)
-                    .put("title", spec.title)
-                    .put("author", spec.author)
-                    .put("file", spec.file)
-                    .put("format", spec.format)
-            )
-        }
-        root.put("version", root.optInt("version", 1) + if (found) 0 else 1)
         val bytes = root.toString(2).toByteArray(StandardCharsets.UTF_8)
         putContent(
             token = token,
             path = path,
             contentBytes = bytes,
-            message = "Update catalog for ${spec.id}",
+            message = message,
             sha = existing?.sha
         )
     }
@@ -123,8 +238,7 @@ class GithubBooksUploader(
     private data class RepoFile(val content: ByteArray, val sha: String)
 
     private fun getContent(token: String, path: String): RepoFile? {
-        val url = apiUrl(path)
-        val conn = open(url, token, "GET")
+        val conn = open(apiUrl(path), token, "GET")
         return when (conn.responseCode) {
             200 -> {
                 val body = conn.inputStream.bufferedReader().use { it.readText() }

@@ -12,4 +12,4 @@
 
 ## 当前书目
 
-见 [`catalog.json`](catalog.json)。
+见 [`catalog.json`](catalog.json)。支持 `folders` 分类列表，以及每本书的 `folder` 字段；App 里创建/移动分类会写入这里。

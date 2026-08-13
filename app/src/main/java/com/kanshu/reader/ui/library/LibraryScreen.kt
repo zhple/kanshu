@@ -544,23 +544,34 @@ fun LibraryScreen(
     if (showCreateFolder) {
         AlertDialog(
             onDismissRequest = { showCreateFolder = false },
-            title = { Text("新建文件夹") },
+            title = { Text("新建分类文件夹") },
             text = {
-                OutlinedTextField(
-                    value = folderNameInput,
-                    onValueChange = { folderNameInput = it },
-                    singleLine = true,
-                    label = { Text("名称") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (hasGithubToken) {
+                            "已配置 Token：创建后会同步到远程仓库，朋友同步仓库书后也能看到这个分类。"
+                        } else {
+                            "未配置 Token：先在本机创建。配置 Token 后，把仓库书移入分类即可同步到远程。"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = folderNameInput,
+                        onValueChange = { folderNameInput = it },
+                        singleLine = true,
+                        label = { Text("分类名称") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         viewModel.createFolder(folderNameInput) { result ->
-                            result.onSuccess {
+                            result.onSuccess { msg ->
                                 showCreateFolder = false
-                                scope.launch { snackbarHostState.showSnackbar("已创建文件夹") }
+                                scope.launch { snackbarHostState.showSnackbar(msg) }
                             }.onFailure {
                                 scope.launch {
                                     snackbarHostState.showSnackbar(it.message ?: "创建失败")
@@ -619,18 +630,34 @@ fun LibraryScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(
                         onClick = {
-                            viewModel.moveBook(book.id, null)
-                            pendingMoveBook = null
-                            scope.launch { snackbarHostState.showSnackbar("已移到根目录") }
+                            viewModel.moveBook(book.id, null) { result ->
+                                result.onSuccess { msg ->
+                                    pendingMoveBook = null
+                                    scope.launch { snackbarHostState.showSnackbar(msg) }
+                                }.onFailure {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar(it.message ?: "移动失败")
+                                    }
+                                }
+                            }
                         },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("根目录（未分类）") }
+                    ) {
+                        Text(if (book.isRemote) "仓库书（默认分类）" else "根目录（未分类）")
+                    }
                     folders.forEach { folder ->
                         TextButton(
                             onClick = {
-                                viewModel.moveBook(book.id, folder.id)
-                                pendingMoveBook = null
-                                scope.launch { snackbarHostState.showSnackbar("已移到「${folder.name}」") }
+                                viewModel.moveBook(book.id, folder.id) { result ->
+                                    result.onSuccess { msg ->
+                                        pendingMoveBook = null
+                                        scope.launch { snackbarHostState.showSnackbar(msg) }
+                                    }.onFailure {
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar(it.message ?: "移动失败")
+                                        }
+                                    }
+                                }
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text(folder.name) }
@@ -675,12 +702,20 @@ fun LibraryScreen(
         AlertDialog(
             onDismissRequest = { pendingDeleteFolder = null },
             title = { Text("删除文件夹") },
-            text = { Text("删除「${folder.name}」后，其中的书会回到根目录，不会删除书籍。") },
+            text = { Text("删除「${folder.name}」后，其中的书会回到默认位置，不会删除书籍。若已配置 Token，远程分类也会同步删除。") },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.deleteFolder(folder.id)
-                        pendingDeleteFolder = null
+                        viewModel.deleteFolder(folder.id) { result ->
+                            result.onSuccess { msg ->
+                                pendingDeleteFolder = null
+                                scope.launch { snackbarHostState.showSnackbar(msg) }
+                            }.onFailure {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(it.message ?: "删除失败")
+                                }
+                            }
+                        }
                     }
                 ) { Text("删除") }
             },

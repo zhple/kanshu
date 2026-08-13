@@ -7,6 +7,7 @@ import com.kanshu.reader.data.db.BookEntity
 import com.kanshu.reader.data.db.FolderEntity
 import com.kanshu.reader.data.prefs.AppThemeMode
 import com.kanshu.reader.data.prefs.ThemePreferences
+import com.kanshu.reader.data.remote.DEFAULT_REMOTE_FOLDER
 import com.kanshu.reader.data.remote.DefaultBooksSync
 import com.kanshu.reader.data.remote.GithubBooksUploader
 import com.kanshu.reader.data.repo.BookRepository
@@ -84,7 +85,7 @@ class LibraryViewModel(
     fun syncDefaultBooks(manual: Boolean = false) {
         viewModelScope.launch {
             val result = defaultBooksSync.sync()
-            if (manual || result.added > 0 || result.failed > 0) {
+            if (manual || result.added > 0 || result.failed > 0 || result.reassigned > 0) {
                 _syncMessage.value = result.message
             }
         }
@@ -140,9 +141,20 @@ class LibraryViewModel(
         }
     }
 
-    fun createFolder(name: String, onDone: (Result<Unit>) -> Unit = {}) {
+    fun createFolder(name: String, onDone: (Result<String>) -> Unit = {}) {
         viewModelScope.launch {
-            onDone(runCatching { bookRepository.createFolder(name); Unit })
+            onDone(
+                runCatching {
+                    val trimmed = name.trim()
+                    bookRepository.createFolder(trimmed)
+                    if (hasGithubToken.value) {
+                        githubBooksUploader.ensureRemoteFolder(trimmed).getOrThrow()
+                        "已创建并同步到远程：$trimmed"
+                    } else {
+                        "已创建本机分类。配置 Token 后可同步到远程。"
+                    }
+                }
+            )
         }
     }
 
@@ -159,10 +171,22 @@ class LibraryViewModel(
         }
     }
 
-    fun deleteFolder(id: Long) {
+    fun deleteFolder(id: Long, onDone: (Result<String>) -> Unit = {}) {
         viewModelScope.launch {
-            bookRepository.deleteFolder(id)
-            if (_currentFolderId.value == id) openRoot()
+            onDone(
+                runCatching {
+                    val folder = bookRepository.getFolder(id) ?: error("文件夹不存在")
+                    val name = folder.name
+                    bookRepository.deleteFolder(id)
+                    if (_currentFolderId.value == id) openRoot()
+                    if (hasGithubToken.value && name != DEFAULT_REMOTE_FOLDER) {
+                        githubBooksUploader.removeRemoteFolder(name).getOrThrow()
+                        "已删除并同步远程分类"
+                    } else {
+                        "已删除本机文件夹"
+                    }
+                }
+            )
         }
     }
 
@@ -172,9 +196,36 @@ class LibraryViewModel(
         }
     }
 
-    fun moveBook(bookId: Long, folderId: Long?) {
+    fun moveBook(bookId: Long, folderId: Long?, onDone: (Result<String>) -> Unit = {}) {
         viewModelScope.launch {
-            bookRepository.moveBook(bookId, folderId)
+            onDone(
+                runCatching {
+                    val book = bookRepository.getBook(bookId) ?: error("书籍不存在")
+                    bookRepository.moveBook(bookId, folderId)
+                    if (!book.isRemote) {
+                        return@runCatching "已移动"
+                    }
+                    val remoteId = book.remoteId?.takeIf { it.isNotBlank() }
+                        ?: error("缺少远程 ID，请先上传到仓库")
+                    val remoteFolder = if (folderId == null) {
+                        DEFAULT_REMOTE_FOLDER
+                    } else {
+                        bookRepository.getFolder(folderId)?.name?.trim().orEmpty()
+                            .ifBlank { DEFAULT_REMOTE_FOLDER }
+                    }
+                    if (hasGithubToken.value) {
+                        githubBooksUploader.ensureRemoteFolder(remoteFolder).getOrThrow()
+                        githubBooksUploader.updateRemoteBookFolder(remoteId, remoteFolder).getOrThrow()
+                        if (folderId == null) {
+                            val defaultId = bookRepository.ensureFolder(DEFAULT_REMOTE_FOLDER)
+                            bookRepository.moveBook(bookId, defaultId)
+                        }
+                        "已移动并同步远程分类到「$remoteFolder」"
+                    } else {
+                        "已移动到本机。配置 Token 后才能同步远程分类。"
+                    }
+                }
+            )
         }
     }
 
