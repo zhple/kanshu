@@ -114,6 +114,51 @@ class BookRepository(
         folderDao.delete(id)
     }
 
+    suspend fun createTextBook(
+        title: String,
+        content: String,
+        folderId: Long? = null,
+        author: String = "我写的"
+    ): Long = withContext(Dispatchers.IO) {
+        val trimmedTitle = title.trim().ifBlank { "未命名文稿" }
+        require(content.isNotBlank()) { "内容不能为空" }
+        val safeName = UUID.randomUUID().toString() + ".txt"
+        val dest = File(booksDir, safeName)
+        dest.writeText(content, Charsets.UTF_8)
+        bookDao.insert(
+            BookEntity(
+                title = trimmedTitle,
+                author = author.trim().ifBlank { "我写的" },
+                format = BookFormat.TXT.name,
+                fileName = safeName,
+                folderId = folderId,
+                source = BookEntity.SOURCE_LOCAL,
+                remoteId = null
+            )
+        )
+    }
+
+    suspend fun updateTextBook(
+        bookId: Long,
+        title: String,
+        content: String
+    ) = withContext(Dispatchers.IO) {
+        val book = bookDao.getBook(bookId) ?: error("文稿不存在")
+        require(book.format.equals("TXT", ignoreCase = true)) { "只能编辑 TXT 文稿" }
+        require(content.isNotBlank()) { "内容不能为空" }
+        val trimmedTitle = title.trim().ifBlank { "未命名文稿" }
+        File(booksDir, book.fileName).writeText(content, Charsets.UTF_8)
+        bookDao.rename(bookId, trimmedTitle)
+    }
+
+    suspend fun readTextContent(bookId: Long): String = withContext(Dispatchers.IO) {
+        val book = bookDao.getBook(bookId) ?: error("文稿不存在")
+        require(book.format.equals("TXT", ignoreCase = true)) { "只能打开 TXT 文稿" }
+        val file = File(booksDir, book.fileName)
+        require(file.exists()) { "文件不存在" }
+        file.readText(Charsets.UTF_8)
+    }
+
     suspend fun renameBook(id: Long, title: String) = withContext(Dispatchers.IO) {
         val trimmed = title.trim()
         require(trimmed.isNotEmpty()) { "书名不能为空" }

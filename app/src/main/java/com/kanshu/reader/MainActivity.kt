@@ -24,6 +24,8 @@ import com.kanshu.reader.ui.reader.PdfReaderViewModel
 import com.kanshu.reader.ui.reader.ReaderScreen
 import com.kanshu.reader.ui.reader.ReaderViewModel
 import com.kanshu.reader.ui.theme.KanshuTheme
+import com.kanshu.reader.ui.write.WriteScreen
+import com.kanshu.reader.ui.write.WriteViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,7 +59,77 @@ class MainActivity : ComponentActivity() {
                                 viewModel = vm,
                                 onOpenBook = { id ->
                                     navController.navigate("open/$id")
+                                },
+                                onWrite = { folderId ->
+                                    if (folderId != null) {
+                                        navController.navigate("write/folder/$folderId")
+                                    } else {
+                                        navController.navigate("write")
+                                    }
+                                },
+                                onEditBook = { id ->
+                                    navController.navigate("write/edit/$id")
                                 }
+                            )
+                        }
+                        composable("write") {
+                            val vm: WriteViewModel = viewModel(
+                                factory = WriteViewModel.factory(
+                                    bookId = null,
+                                    folderId = null,
+                                    bookRepository = app.container.bookRepository,
+                                    themePreferences = app.container.themePreferences,
+                                    githubBooksUploader = app.container.githubBooksUploader
+                                )
+                            )
+                            WriteScreen(
+                                viewModel = vm,
+                                onBack = { navController.popBackStack() },
+                                onSaved = { navController.popBackStack() }
+                            )
+                        }
+                        composable(
+                            route = "write/folder/{folderId}",
+                            arguments = listOf(
+                                navArgument("folderId") { type = NavType.LongType }
+                            )
+                        ) { entry ->
+                            val folderId = entry.arguments?.getLong("folderId")
+                            val vm: WriteViewModel = viewModel(
+                                factory = WriteViewModel.factory(
+                                    bookId = null,
+                                    folderId = folderId,
+                                    bookRepository = app.container.bookRepository,
+                                    themePreferences = app.container.themePreferences,
+                                    githubBooksUploader = app.container.githubBooksUploader
+                                )
+                            )
+                            WriteScreen(
+                                viewModel = vm,
+                                onBack = { navController.popBackStack() },
+                                onSaved = { navController.popBackStack() }
+                            )
+                        }
+                        composable(
+                            route = "write/edit/{bookId}",
+                            arguments = listOf(
+                                navArgument("bookId") { type = NavType.LongType }
+                            )
+                        ) { entry ->
+                            val bookId = entry.arguments?.getLong("bookId") ?: return@composable
+                            val vm: WriteViewModel = viewModel(
+                                factory = WriteViewModel.factory(
+                                    bookId = bookId,
+                                    folderId = null,
+                                    bookRepository = app.container.bookRepository,
+                                    themePreferences = app.container.themePreferences,
+                                    githubBooksUploader = app.container.githubBooksUploader
+                                )
+                            )
+                            WriteScreen(
+                                viewModel = vm,
+                                onBack = { navController.popBackStack() },
+                                onSaved = { navController.popBackStack() }
                             )
                         }
                         composable(

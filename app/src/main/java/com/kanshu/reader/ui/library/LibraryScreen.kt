@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.LightMode
@@ -45,6 +46,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -92,7 +94,9 @@ import java.util.Locale
 @Composable
 fun LibraryScreen(
     viewModel: LibraryViewModel,
-    onOpenBook: (Long) -> Unit
+    onOpenBook: (Long) -> Unit,
+    onWrite: (folderId: Long?) -> Unit,
+    onEditBook: (Long) -> Unit
 ) {
     val books by viewModel.books.collectAsStateWithLifecycle()
     val allBooks by viewModel.allBooks.collectAsStateWithLifecycle()
@@ -313,22 +317,30 @@ fun LibraryScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    if (!importing) {
-                        picker.launch(
-                            arrayOf(
-                                "text/plain",
-                                "application/epub+zip",
-                                "application/pdf",
-                                "application/octet-stream",
-                                "*/*"
-                            )
-                        )
-                    }
+            Column(horizontalAlignment = Alignment.End) {
+                SmallFloatingActionButton(
+                    onClick = { onWrite(currentFolderId) }
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = "写点东西")
                 }
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "导入书籍")
+                Spacer(modifier = Modifier.height(12.dp))
+                FloatingActionButton(
+                    onClick = {
+                        if (!importing) {
+                            picker.launch(
+                                arrayOf(
+                                    "text/plain",
+                                    "application/epub+zip",
+                                    "application/pdf",
+                                    "application/octet-stream",
+                                    "*/*"
+                                )
+                            )
+                        }
+                    }
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "导入书籍")
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -428,6 +440,17 @@ fun LibraryScreen(
                             "本地书 · 可改名，或上传到远程仓库供同步"
                         }
                     )
+                    if (book.format.equals("TXT", ignoreCase = true)) {
+                        TextButton(
+                            onClick = {
+                                bookMenu = null
+                                onEditBook(book.id)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("编辑文稿")
+                        }
+                    }
                     TextButton(
                         onClick = {
                             renameInput = book.title

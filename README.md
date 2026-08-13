@@ -7,8 +7,8 @@
 ## 下载安装
 
 - 最新安装包：[Releases](https://github.com/zhple/kanshu/releases/latest)
-- 当前推荐：`kanshu-v1.5.0.apk`（[v10](https://github.com/zhple/kanshu/releases/tag/v12)）
-- 仓库内也有副本：`release/kanshu-v1.5.0.apk`
+- 当前推荐：`kanshu-v1.5.1.apk`（[v10](https://github.com/zhple/kanshu/releases/tag/v13)）
+- 仓库内也有副本：`release/kanshu-v1.5.1.apk`
 
 Android 8.0+（API 24+）。首次安装若提示「未知来源」，按系统提示允许即可。
 
@@ -17,7 +17,7 @@ Android 8.0+（API 24+）。首次安装若提示「未知来源」，按系统�
 | 能力 | 说明 |
 | --- | --- |
 | 格式 | TXT、EPUB、PDF |
-| 书架 | 导入、改书名、删除、进度记忆 |
+| 书架 | 导入、写作、改书名、删除、进度记忆 |
 | 分类 | 新建文件夹；仓库书分类可同步到远程 `catalog.json` |
 | 阅读 | 左右滑动翻页；点中间显隐工具栏；目录跳转 |
 | 主题 | 白天 / 黑夜 |
