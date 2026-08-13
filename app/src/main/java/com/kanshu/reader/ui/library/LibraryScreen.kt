@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.LightMode
@@ -96,7 +97,8 @@ fun LibraryScreen(
     viewModel: LibraryViewModel,
     onOpenBook: (Long) -> Unit,
     onWrite: (folderId: Long?) -> Unit,
-    onEditBook: (Long) -> Unit
+    onEditBook: (Long) -> Unit,
+    onAiChat: () -> Unit
 ) {
     val books by viewModel.books.collectAsStateWithLifecycle()
     val allBooks by viewModel.allBooks.collectAsStateWithLifecycle()
@@ -318,6 +320,10 @@ fun LibraryScreen(
         },
         floatingActionButton = {
             Column(horizontalAlignment = Alignment.End) {
+                SmallFloatingActionButton(onClick = onAiChat) {
+                    Icon(Icons.Default.Forum, contentDescription = "角色场景聊天")
+                }
+                Spacer(modifier = Modifier.height(12.dp))
                 SmallFloatingActionButton(
                     onClick = { onWrite(currentFolderId) }
                 ) {

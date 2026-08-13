@@ -13,8 +13,8 @@ android {
         applicationId = "com.kanshu.reader"
         minSdk = 24
         targetSdk = 35
-        versionCode = 13
-        versionName = "1.5.1"
+        versionCode = 14
+        versionName = "1.6.0"
 
         // 自动更新：指向 GitHub Releases latest API
         buildConfigField(
@@ -92,4 +92,5 @@ dependencies {
 
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("org.jsoup:jsoup:1.18.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

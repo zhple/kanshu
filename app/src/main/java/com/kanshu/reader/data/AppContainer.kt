@@ -1,6 +1,7 @@
 package com.kanshu.reader.data
 
 import android.content.Context
+import com.kanshu.reader.data.ai.AiChatRepository
 import com.kanshu.reader.data.db.AppDatabase
 import com.kanshu.reader.data.prefs.ThemePreferences
 import com.kanshu.reader.data.remote.DefaultBooksSync
@@ -19,4 +20,9 @@ class AppContainer(context: Context) {
     val themePreferences = ThemePreferences(appContext)
     val defaultBooksSync = DefaultBooksSync(appContext, bookRepository)
     val githubBooksUploader = GithubBooksUploader(bookRepository, themePreferences)
+    val aiChatRepository = AiChatRepository(
+        context = appContext,
+        aiChatDao = database.aiChatDao(),
+        themePreferences = themePreferences
+    )
 }

@@ -17,6 +17,7 @@ enum class AppThemeMode {
 class ThemePreferences(private val context: Context) {
     private val themeKey = stringPreferencesKey("theme_mode")
     private val githubTokenKey = stringPreferencesKey("github_token")
+    private val deepseekApiKeyKey = stringPreferencesKey("deepseek_api_key")
 
     val themeMode: Flow<AppThemeMode> = context.dataStore.data.map { prefs ->
         when (prefs[themeKey]) {
@@ -27,6 +28,10 @@ class ThemePreferences(private val context: Context) {
 
     val githubToken: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[githubTokenKey].orEmpty()
+    }
+
+    val deepseekApiKey: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[deepseekApiKeyKey].orEmpty()
     }
 
     suspend fun setThemeMode(mode: AppThemeMode) {
@@ -44,6 +49,18 @@ class ThemePreferences(private val context: Context) {
     suspend fun clearGithubToken() {
         context.dataStore.edit { prefs ->
             prefs.remove(githubTokenKey)
+        }
+    }
+
+    suspend fun setDeepseekApiKey(key: String) {
+        context.dataStore.edit { prefs ->
+            prefs[deepseekApiKeyKey] = key.trim()
+        }
+    }
+
+    suspend fun clearDeepseekApiKey() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(deepseekApiKeyKey)
         }
     }
 }

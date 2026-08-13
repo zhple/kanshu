@@ -7,8 +7,8 @@
 ## 下载安装
 
 - 最新安装包：[Releases](https://github.com/zhple/kanshu/releases/latest)
-- 当前推荐：`kanshu-v1.5.1.apk`（[v10](https://github.com/zhple/kanshu/releases/tag/v13)）
-- 仓库内也有副本：`release/kanshu-v1.5.1.apk`
+- 当前推荐：`kanshu-v1.6.0.apk`（[v10](https://github.com/zhple/kanshu/releases/tag/v14)）
+- 仓库内也有副本：`release/kanshu-v1.6.0.apk`
 
 Android 8.0+（API 24+）。首次安装若提示「未知来源」，按系统提示允许即可。
 
@@ -23,6 +23,7 @@ Android 8.0+（API 24+）。首次安装若提示「未知来源」，按系统�
 | 主题 | 白天 / 黑夜 |
 | 仓库书 | 启动或检查更新时，同步 `default-books/` |
 | 上传 | 在 App 里填写 Token 后，可将本地书上传到仓库 |
+| 角色聊天 | DeepSeek 角色场景扮演：优化提示词、流式对话、本地保存会话 |
 | 更新 | 检查 GitHub Release，有新版本会提示 |
 
 ## 使用
@@ -43,6 +44,12 @@ Android 8.0+（API 24+）。首次安装若提示「未知来源」，按系统�
 4. 成功后会写入 [`default-books/`](default-books/)，对方同步即可看到
 
 朋友只看书、不同步上传的话，不用填 Token。
+
+### 角色场景聊天
+
+1. 书架右下角对话框图标进入
+2. 设置里填写 DeepSeek API Key（只存在本机，勿提交到仓库）
+3. 新建：填写场景、对方人设、我的人设 → 生成并确认提示词 → AI 开场后开始聊
 
 ## 本地构建
 

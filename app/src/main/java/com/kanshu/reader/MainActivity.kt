@@ -17,6 +17,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.kanshu.reader.reader.BookFormat
+import com.kanshu.reader.ui.ai.AiChatScreen
+import com.kanshu.reader.ui.ai.AiChatViewModel
+import com.kanshu.reader.ui.ai.AiCreateScreen
+import com.kanshu.reader.ui.ai.AiCreateViewModel
+import com.kanshu.reader.ui.ai.AiSessionsScreen
+import com.kanshu.reader.ui.ai.AiSessionsViewModel
 import com.kanshu.reader.ui.library.LibraryScreen
 import com.kanshu.reader.ui.library.LibraryViewModel
 import com.kanshu.reader.ui.reader.PdfReaderScreen
@@ -69,9 +75,63 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onEditBook = { id ->
                                     navController.navigate("write/edit/$id")
+                                },
+                                onAiChat = {
+                                    navController.navigate("ai/sessions")
                                 }
                             )
                         }
+
+                        composable("ai/sessions") {
+                            val vm: AiSessionsViewModel = viewModel(
+                                factory = AiSessionsViewModel.factory(
+                                    app.container.aiChatRepository,
+                                    app.container.themePreferences
+                                )
+                            )
+                            AiSessionsScreen(
+                                viewModel = vm,
+                                onBack = { navController.popBackStack() },
+                                onCreate = { navController.navigate("ai/create") },
+                                onOpenSession = { id ->
+                                    navController.navigate("ai/chat/$id")
+                                }
+                            )
+                        }
+                        composable("ai/create") {
+                            val vm: AiCreateViewModel = viewModel(
+                                factory = AiCreateViewModel.factory(app.container.aiChatRepository)
+                            )
+                            AiCreateScreen(
+                                viewModel = vm,
+                                onBack = { navController.popBackStack() },
+                                onSessionReady = { id ->
+                                    navController.navigate("ai/chat/$id") {
+                                        popUpTo("ai/create") { inclusive = true }
+                                    }
+                                }
+                            )
+                        }
+                        composable(
+                            route = "ai/chat/{sessionId}",
+                            arguments = listOf(
+                                navArgument("sessionId") { type = NavType.LongType }
+                            )
+                        ) { entry ->
+                            val sessionId = entry.arguments?.getLong("sessionId")
+                                ?: return@composable
+                            val vm: AiChatViewModel = viewModel(
+                                factory = AiChatViewModel.factory(
+                                    sessionId,
+                                    app.container.aiChatRepository
+                                )
+                            )
+                            AiChatScreen(
+                                viewModel = vm,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+
                         composable("write") {
                             val vm: WriteViewModel = viewModel(
                                 factory = WriteViewModel.factory(
