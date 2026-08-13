@@ -17,12 +17,13 @@ object TextPaginator {
         widthPx: Int,
         heightPx: Int,
         textSizePx: Float,
-        lineSpacingMultiplier: Float = 1.35f
+        lineSpacingMultiplier: Float = 1.55f
     ): List<ReaderPage> {
         if (chapters.isEmpty() || widthPx <= 0 || heightPx <= 0) return emptyList()
 
         val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG).apply {
             textSize = textSizePx
+            isAntiAlias = true
         }
 
         val pages = mutableListOf<ReaderPage>()

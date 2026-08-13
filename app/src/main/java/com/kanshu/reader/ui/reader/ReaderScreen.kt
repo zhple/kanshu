@@ -62,9 +62,10 @@ import com.kanshu.reader.ui.theme.readerPalette
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.roundToInt
 
-private val ReaderFontSize = 18.sp
-private val ReaderHorizontalPadding = 20.dp
-private val ReaderVerticalPadding = 12.dp
+private val ReaderFontSize = 19.sp
+private val ReaderLineHeight = 34.sp
+private val ReaderHorizontalPadding = 22.dp
+private val ReaderVerticalPadding = 14.dp
 /** Reserve space so pages don't sit under status/nav/toolbars */
 private val TopContentReserve = 72.dp
 private val BottomContentReserve = 72.dp
@@ -183,7 +184,7 @@ fun ReaderScreen(
                                     text = readerPage.text,
                                     color = palette.text,
                                     fontSize = ReaderFontSize,
-                                    lineHeight = 28.sp,
+                                    lineHeight = ReaderLineHeight,
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }

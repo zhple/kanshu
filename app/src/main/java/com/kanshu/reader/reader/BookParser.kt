@@ -86,66 +86,68 @@ object BookParser {
     }
 
     private fun parseTxt(file: File, fallbackTitle: String): ParsedBook {
-        val text = readTextWithGuess(file).replace("\r\n", "\n").replace('\r', '\n')
-        val chapters = splitTxtChapters(text)
+        val raw = readTextWithGuess(file)
+        val text = TxtReadingFormatter.cleanRawText(raw)
+        val title = TxtReadingFormatter.guessTitle(text, fallbackTitle)
+        val chapters = TxtReadingFormatter.splitChapters(text).map { chapter ->
+            chapter.copy(content = TxtReadingFormatter.formatBody(chapter.content))
+        }
         return ParsedBook(
-            metadata = BookMetadata(
-                title = fallbackTitle.removeSuffix(".txt").removeSuffix(".TXT"),
-                author = "未知作者"
-            ),
+            metadata = BookMetadata(title = title, author = "未知作者"),
             chapters = chapters
         )
     }
 
-    private fun splitTxtChapters(text: String): List<Chapter> {
-        val pattern = Regex(
-            """(?m)^(第[\d零一二三四五六七八九十百千两]+[章节回部卷集].*|Chapter\s+\d+.*|CHAPTER\s+\d+.*)$"""
-        )
-        val matches = pattern.findAll(text).toList()
-        if (matches.isEmpty()) {
-            return listOf(Chapter("全文", text.trim().ifBlank { "（空文件）" }))
-        }
-
-        val chapters = mutableListOf<Chapter>()
-        val firstStart = matches.first().range.first
-        if (firstStart > 0) {
-            val preface = text.substring(0, firstStart).trim()
-            if (preface.isNotEmpty()) {
-                chapters += Chapter("前言", preface)
-            }
-        }
-        matches.forEachIndexed { index, match ->
-            val start = match.range.first
-            val end = matches.getOrNull(index + 1)?.range?.first ?: text.length
-            val body = text.substring(start, end).trim()
-            val title = match.value.trim().ifBlank { "第${index + 1}章" }
-            chapters += Chapter(title, body)
-        }
-        return chapters.ifEmpty { listOf(Chapter("全文", text.trim())) }
-    }
-
     private fun readTextWithGuess(file: File): String {
         val bytes = file.readBytes()
-        val charsets = listOf(
-            Charsets.UTF_8,
-            Charset.forName("GBK"),
+        // BOM
+        if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {
+            return String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
+        }
+        val candidates = listOf(
             Charset.forName("GB18030"),
-            Charsets.UTF_16
+            Charset.forName("GBK"),
+            Charsets.UTF_8,
+            Charsets.UTF_16LE,
+            Charsets.UTF_16BE
         )
-        for (charset in charsets) {
+        var best: Pair<String, Int>? = null
+        for (charset in candidates) {
             try {
                 val decoded = String(bytes, charset)
-                if (!decoded.contains('\uFFFD') || charset == Charsets.UTF_8) {
-                    if (decoded.count { it == '\uFFFD' } < decoded.length / 50) {
-                        return decoded
-                    }
+                val score = scoreDecodedText(decoded)
+                if (best == null || score > best.second) {
+                    best = decoded to score
                 }
             } catch (_: Exception) {
                 // try next
             }
         }
-        return String(bytes, Charsets.UTF_8)
+        return best?.first ?: String(bytes, Charsets.UTF_8)
     }
+
+    private fun scoreDecodedText(text: String): Int {
+        if (text.isEmpty()) return Int.MIN_VALUE / 2
+        val sample = text.take(8000)
+        var score = 0
+        var replacement = 0
+        var cjk = 0
+        var control = 0
+        for (ch in sample) {
+            when {
+                ch == '\uFFFD' -> replacement++
+                ch in '\u4e00'..'\u9fff' -> cjk++
+                ch.code < 32 && ch != '\n' && ch != '\r' && ch != '\t' -> control++
+            }
+        }
+        score += cjk * 3
+        score -= replacement * 40
+        score -= control * 20
+        // Prefer texts that look like novels
+        if (sample.contains("第") && (sample.contains("章") || sample.contains("卷"))) score += 50
+        return score
+    }
+
 
     private fun parseEpub(file: File): ParsedBook {
         ZipFile(file).use { zip ->

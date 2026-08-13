@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "books": [
     {
       "id": "dianqi-maxituan",
@@ -7,6 +7,34 @@
       "author": "仓库默认",
       "file": "dianqi-maxituan.epub",
       "format": "EPUB"
+    },
+    {
+      "id": "txt-9296",
+      "title": "雪崎绘理的战斗",
+      "author": "仓库默认",
+      "file": "txt-9296.txt",
+      "format": "TXT"
+    },
+    {
+      "id": "txt-172785",
+      "title": "死者社长",
+      "author": "仓库默认",
+      "file": "txt-172785.txt",
+      "format": "TXT"
+    },
+    {
+      "id": "txt-72775",
+      "title": "葬礼之夜",
+      "author": "仓库默认",
+      "file": "txt-72775.txt",
+      "format": "TXT"
+    },
+    {
+      "id": "txt-1",
+      "title": "渴望死亡的小丑",
+      "author": "仓库默认",
+      "file": "txt-1.txt",
+      "format": "TXT"
     }
   ]
 }
