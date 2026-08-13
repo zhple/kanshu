@@ -65,6 +65,47 @@ class DeepSeekClient(
         parseOptimizedPrompt(raw)
     }
 
+    suspend fun generateVisualDna(
+        dnaSystem: String,
+        systemPrompt: String
+    ): VisualDna = withContext(Dispatchers.IO) {
+        val raw = chatOnce(
+            messages = listOf(
+                ChatMessage("system", dnaSystem),
+                ChatMessage(
+                    "user",
+                    "根据以下角色扮演设定，输出 Visual DNA JSON：\n\n${systemPrompt.trim()}"
+                )
+            ),
+            temperature = 0.5
+        )
+        VisualDna.parse(raw)
+    }
+
+    suspend fun buildSceneImagePrompt(
+        sceneSystem: String,
+        dna: VisualDna,
+        recentDialogue: String
+    ): SceneImageSpec = withContext(Dispatchers.IO) {
+        val userContent = buildString {
+            appendLine("【Visual DNA（严禁改动 lock / gender）】")
+            appendLine(dna.toJson())
+            appendLine()
+            appendLine("【当前对话片段】")
+            appendLine(recentDialogue.trim().ifBlank { "（开场画面）" })
+            appendLine()
+            appendLine("请输出规定 JSON。")
+        }
+        val raw = chatOnce(
+            messages = listOf(
+                ChatMessage("system", sceneSystem),
+                ChatMessage("user", userContent)
+            ),
+            temperature = 0.4
+        )
+        parseSceneImageSpec(raw, dna)
+    }
+
     fun chatStream(
         systemPrompt: String,
         history: List<ChatMessage>,
@@ -186,6 +227,37 @@ class DeepSeekClient(
             "请根据设定，用中文写出富有代入感的第一幕开场（含旁白与情境），不要替用户行动或说话。"
         }
         return OptimizedPrompt(title, systemPrompt, openingHint)
+    }
+
+    private fun parseSceneImageSpec(raw: String, dna: VisualDna): SceneImageSpec {
+        val jsonText = extractJsonObject(raw)
+        val obj = JSONObject(jsonText)
+        var prompt = obj.optString("prompt").trim()
+        if (prompt.isBlank()) {
+            // 兜底：直接用 DNA 拼
+            prompt = buildFallbackScenePrompt(dna, raw)
+        } else {
+            // 强制把 lock 再贴一遍，降低模型漏写导致男女乱变
+            val locks = (dna.characters.map { it.lock } + dna.user.lock)
+                .filter { it.isNotBlank() }
+            locks.forEach { lock ->
+                if (!prompt.contains(lock.take(40))) {
+                    prompt = "$prompt, $lock"
+                }
+            }
+            if (!prompt.lowercase().contains(dna.artStyle.take(20).lowercase())) {
+                prompt = "${dna.artStyle}, $prompt"
+            }
+        }
+        val width = obj.optInt("width", 768).coerceIn(512, 1024)
+        val height = obj.optInt("height", 1024).coerceIn(512, 1280)
+        return SceneImageSpec(prompt = prompt, width = width, height = height)
+    }
+
+    private fun buildFallbackScenePrompt(dna: VisualDna, dialogueHint: String): String {
+        val locks = dna.characters.joinToString(", ") { it.lock }
+        return "${dna.artStyle}, $locks, ${dna.user.lock}, scene from story, cinematic composition, masterpiece, best quality"
+            .take(1800)
     }
 
     private fun extractJsonObject(raw: String): String {

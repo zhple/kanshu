@@ -26,6 +26,16 @@ interface AiChatDao {
         updatedAt: Long = System.currentTimeMillis()
     )
 
+    @Query(
+        "UPDATE ai_sessions SET visualDnaJson = :visualDnaJson, imageSeed = :imageSeed, updatedAt = :updatedAt WHERE id = :id"
+    )
+    suspend fun updateVisualDna(
+        id: Long,
+        visualDnaJson: String,
+        imageSeed: Long,
+        updatedAt: Long = System.currentTimeMillis()
+    )
+
     @Query("UPDATE ai_sessions SET updatedAt = :updatedAt WHERE id = :id")
     suspend fun touchSession(id: Long, updatedAt: Long = System.currentTimeMillis())
 
@@ -38,11 +48,17 @@ interface AiChatDao {
     @Query("SELECT * FROM ai_messages WHERE sessionId = :sessionId ORDER BY id ASC")
     suspend fun listMessages(sessionId: Long): List<AiMessageEntity>
 
+    @Query("SELECT * FROM ai_messages WHERE id = :id")
+    suspend fun getMessage(id: Long): AiMessageEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: AiMessageEntity): Long
 
     @Query("UPDATE ai_messages SET content = :content WHERE id = :id")
     suspend fun updateMessageContent(id: Long, content: String)
+
+    @Query("UPDATE ai_messages SET imagePath = :imagePath, imagePrompt = :imagePrompt WHERE id = :id")
+    suspend fun updateMessageImage(id: Long, imagePath: String, imagePrompt: String)
 
     @Query("SELECT COUNT(*) FROM ai_messages WHERE sessionId = :sessionId AND role = 'assistant'")
     suspend fun assistantCount(sessionId: Long): Int

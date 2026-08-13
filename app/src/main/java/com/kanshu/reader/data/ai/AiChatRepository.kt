@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class AiChatRepository(
     private val context: Context,
@@ -18,6 +19,7 @@ class AiChatRepository(
     private val client = DeepSeekClient(
         apiKeyProvider = { themePreferences.deepseekApiKey.first() }
     )
+    private val imageClient = SceneImageClient()
 
     fun observeSessions(): Flow<List<AiSessionEntity>> = aiChatDao.observeSessions()
 
@@ -51,14 +53,83 @@ class AiChatRepository(
     ): Long = withContext(Dispatchers.IO) {
         val runtime = readAsset("ai/roleplay_runtime.txt")
         val merged = systemPrompt.trim() + "\n\n" + runtime.trim()
+        val dna = runCatching {
+            client.generateVisualDna(
+                dnaSystem = readAsset("ai/roleplay_visual_dna.txt"),
+                systemPrompt = merged
+            )
+        }.getOrNull()
         aiChatDao.insertSession(
             AiSessionEntity(
                 title = title.trim().ifBlank { "未命名角色聊天" },
                 systemPrompt = merged,
-                openingHint = openingHint.trim()
+                openingHint = openingHint.trim(),
+                visualDnaJson = dna?.toJson().orEmpty(),
+                imageSeed = dna?.seed ?: 0L
             )
         )
     }
+
+    suspend fun ensureVisualDna(sessionId: Long): VisualDna = withContext(Dispatchers.IO) {
+        val session = aiChatDao.getSession(sessionId) ?: error("会话不存在")
+        if (session.visualDnaJson.isNotBlank()) {
+            return@withContext VisualDna.parse(session.visualDnaJson).let { parsed ->
+                if (session.imageSeed > 0 && parsed.seed != session.imageSeed) {
+                    parsed.copy(seed = session.imageSeed)
+                } else {
+                    parsed
+                }
+            }
+        }
+        val dna = client.generateVisualDna(
+            dnaSystem = readAsset("ai/roleplay_visual_dna.txt"),
+            systemPrompt = session.systemPrompt
+        )
+        aiChatDao.updateVisualDna(sessionId, dna.toJson(), dna.seed)
+        dna
+    }
+
+    /**
+     * 为某条 assistant 消息生成场景配图（免费 Pollinations + 固定 seed + Visual DNA）。
+     * @return 本地图片路径
+     */
+    suspend fun generateSceneImage(sessionId: Long, messageId: Long): String =
+        withContext(Dispatchers.IO) {
+            val message = aiChatDao.getMessage(messageId) ?: error("消息不存在")
+            require(message.sessionId == sessionId) { "消息不属于该会话" }
+            require(message.role == "assistant") { "只能为 AI 回复配图" }
+            if (message.imagePath.isNotBlank() && File(message.imagePath).exists()) {
+                return@withContext message.imagePath
+            }
+
+            val dna = ensureVisualDna(sessionId)
+            val recent = aiChatDao.listMessages(sessionId)
+                .filter { it.role == "user" || it.role == "assistant" }
+                .takeLast(6)
+                .joinToString("\n") { "${it.role}: ${it.content.take(400)}" }
+
+            val spec = client.buildSceneImagePrompt(
+                sceneSystem = readAsset("ai/roleplay_scene_image.txt"),
+                dna = dna,
+                recentDialogue = recent
+            )
+
+            val dest = File(
+                context.filesDir,
+                "ai_images/s${sessionId}_m${messageId}.jpg"
+            )
+            imageClient.generateToFile(
+                prompt = spec.prompt,
+                negative = dna.negative,
+                seed = dna.seed,
+                width = spec.width,
+                height = spec.height,
+                dest = dest
+            )
+            aiChatDao.updateMessageImage(messageId, dest.absolutePath, spec.prompt)
+            aiChatDao.touchSession(sessionId)
+            dest.absolutePath
+        }
 
     suspend fun listChatMessages(sessionId: Long): List<ChatMessage> =
         withContext(Dispatchers.IO) {

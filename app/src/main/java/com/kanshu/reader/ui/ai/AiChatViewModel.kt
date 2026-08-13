@@ -22,7 +22,9 @@ data class AiChatUiState(
     val streaming: Boolean = false,
     val streamingText: String = "",
     val error: String? = null,
-    val openingDone: Boolean = false
+    val openingDone: Boolean = false,
+    /** 正在为哪条消息生图；null 表示空闲 */
+    val generatingImageFor: Long? = null
 )
 
 class AiChatViewModel(
@@ -69,6 +71,24 @@ class AiChatViewModel(
         }
     }
 
+    fun generateSceneImage(messageId: Long) {
+        if (_uiState.value.generatingImageFor != null || _uiState.value.streaming) return
+        if (messageId <= 0) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(generatingImageFor = messageId, error = null) }
+            runCatching {
+                aiChatRepository.generateSceneImage(sessionId, messageId)
+                // 刷新 session（可能刚写入 Visual DNA）
+                aiChatRepository.getSession(sessionId)?.let { s ->
+                    _uiState.update { it.copy(session = s) }
+                }
+            }.onFailure { e ->
+                _uiState.update { it.copy(error = e.message ?: "生图失败") }
+            }
+            _uiState.update { it.copy(generatingImageFor = null) }
+        }
+    }
+
     private fun startOpening(session: AiSessionEntity) {
         streamJob?.cancel()
         streamJob = viewModelScope.launch {
@@ -76,8 +96,6 @@ class AiChatViewModel(
                 val hint = session.openingHint.ifBlank {
                     "请根据设定，用中文写出富有代入感的第一幕开场（含旁白与情境），不要替用户行动或说话。"
                 }
-                // 用一条 user 触发开场，但不展示给用户（role=system 不进聊天展示过滤）
-                // 实际：history 里放一条 user 触发，但我们用临时 history 不入库 user 触发语
                 streamAssistant(
                     session = session,
                     extraHistory = listOf(ChatMessage("user", hint)),
@@ -106,7 +124,6 @@ class AiChatViewModel(
             addAll(aiChatRepository.listChatMessages(sessionId))
             addAll(extraHistory)
         }
-        // persistTriggerAsUser unused when extraHistory already not persisted
         @Suppress("UNUSED_VARIABLE")
         val ignored = persistTriggerAsUser
 

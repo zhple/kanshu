@@ -14,7 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AiSessionEntity::class,
         AiMessageEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -79,6 +79,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE ai_sessions ADD COLUMN visualDnaJson TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE ai_sessions ADD COLUMN imageSeed INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE ai_messages ADD COLUMN imagePath TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE ai_messages ADD COLUMN imagePrompt TEXT NOT NULL DEFAULT ''"
+                )
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -89,7 +106,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "kanshu.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onOpen(db: SupportSQLiteDatabase) {
                             db.execSQL("PRAGMA foreign_keys=ON")

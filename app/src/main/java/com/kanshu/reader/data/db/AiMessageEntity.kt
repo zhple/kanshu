@@ -23,5 +23,8 @@ data class AiMessageEntity(
     /** user / assistant / system */
     val role: String,
     val content: String,
+    /** 本地场景图绝对路径，空表示未生成 */
+    val imagePath: String = "",
+    val imagePrompt: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )

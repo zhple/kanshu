@@ -186,7 +186,7 @@ fun AiCreateScreen(
                         enabled = !state.creating,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(if (state.creating) "创建中…" else "开始对话")
+                        Text(if (state.creating) "创建中（锁定角色外观）…" else "开始对话")
                     }
                 }
             }

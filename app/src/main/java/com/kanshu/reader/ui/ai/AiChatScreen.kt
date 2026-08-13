@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -30,6 +33,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,10 +42,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.kanshu.reader.data.db.AiMessageEntity
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,7 +71,7 @@ fun AiChatScreen(
         viewModel.clearError()
     }
 
-    LaunchedEffect(visibleMessages.size, state.streamingText) {
+    LaunchedEffect(visibleMessages.size, state.streamingText, state.generatingImageFor) {
         if (visibleMessages.isNotEmpty() || state.streamingText.isNotEmpty()) {
             listState.animateScrollToItem(
                 (visibleMessages.size + if (state.streamingText.isNotEmpty()) 1 else 0)
@@ -112,7 +119,6 @@ fun AiChatScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(visibleMessages, key = { it.id }) { msg ->
-                        // 正在流式更新的空 assistant 气泡用 streamingText 覆盖显示
                         val content = if (
                             state.streaming &&
                             msg.role == "assistant" &&
@@ -124,7 +130,15 @@ fun AiChatScreen(
                             msg.content
                         }
                         if (content.isNotBlank() || msg.role == "user") {
-                            MessageBubble(message = msg.copy(content = content.ifBlank { "…" }))
+                            MessageBubble(
+                                message = msg.copy(content = content.ifBlank { "…" }),
+                                generatingImage = state.generatingImageFor == msg.id,
+                                canGenerateImage = msg.role == "assistant" &&
+                                    msg.content.isNotBlank() &&
+                                    !state.streaming &&
+                                    state.generatingImageFor == null,
+                                onGenerateImage = { viewModel.generateSceneImage(msg.id) }
+                            )
                         }
                     }
                     if (state.streaming && visibleMessages.none { it.role == "assistant" && it.content.isEmpty() } &&
@@ -138,7 +152,10 @@ fun AiChatScreen(
                                     sessionId = 0,
                                     role = "assistant",
                                     content = state.streamingText
-                                )
+                                ),
+                                generatingImage = false,
+                                canGenerateImage = false,
+                                onGenerateImage = {}
                             )
                         }
                     }
@@ -186,11 +203,18 @@ fun AiChatScreen(
 }
 
 @Composable
-private fun MessageBubble(message: AiMessageEntity) {
+private fun MessageBubble(
+    message: AiMessageEntity,
+    generatingImage: Boolean,
+    canGenerateImage: Boolean,
+    onGenerateImage: () -> Unit
+) {
     val mine = message.role == "user"
-    Row(
+    val hasImage = message.imagePath.isNotBlank() && File(message.imagePath).exists()
+
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
+        horizontalAlignment = if (mine) Alignment.End else Alignment.Start
     ) {
         Box(
             modifier = Modifier
@@ -214,6 +238,47 @@ private fun MessageBubble(message: AiMessageEntity) {
                 },
                 style = MaterialTheme.typography.bodyMedium
             )
+        }
+
+        if (!mine && message.id > 0) {
+            if (hasImage) {
+                Spacer(Modifier.height(6.dp))
+                AsyncImage(
+                    model = File(message.imagePath),
+                    contentDescription = "场景图",
+                    modifier = Modifier
+                        .widthIn(max = 280.dp)
+                        .heightIn(max = 360.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else if (generatingImage) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text(
+                        "生成场景图中…（约数秒到十几秒）",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else if (canGenerateImage) {
+                TextButton(
+                    onClick = onGenerateImage,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.Image,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.size(4.dp))
+                    Text("生成场景图")
+                }
+            }
         }
     }
 }
