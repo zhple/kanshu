@@ -5,6 +5,9 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import kotlin.math.max
 
+import com.kanshu.reader.reader.Chapter
+import com.kanshu.reader.reader.ChapterTitles
+
 data class ReaderPage(
     val text: String,
     val chapterIndex: Int,
@@ -23,13 +26,13 @@ object TextPaginator {
 
         val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG).apply {
             textSize = textSizePx
-            // Approximate Chinese-friendly metrics
         }
 
         val pages = mutableListOf<ReaderPage>()
         chapters.forEachIndexed { chapterIndex, chapter ->
+            val displayTitle = ChapterTitles.displayTitle(chapterIndex, chapter.title.trim())
             val body = buildString {
-                append(chapter.title.trim())
+                append(displayTitle)
                 append("\n\n")
                 append(chapter.content.trim())
             }.ifBlank { "（空章节）" }
@@ -41,7 +44,7 @@ object TextPaginator {
                 paint = paint,
                 lineSpacingMultiplier = lineSpacingMultiplier,
                 chapterIndex = chapterIndex,
-                chapterTitle = chapter.title
+                chapterTitle = displayTitle
             )
         }
         return pages

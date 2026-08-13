@@ -16,11 +16,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
@@ -30,6 +34,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +48,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kanshu.reader.data.prefs.AppThemeMode
+import com.kanshu.reader.reader.ChapterTitles
 import com.kanshu.reader.ui.theme.readerPalette
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.roundToInt
@@ -193,6 +200,9 @@ fun ReaderScreen(
                             modifier = Modifier.align(Alignment.TopCenter)
                         )
                         val current = state.pages.getOrNull(state.pageIndex)
+                        val chapterLabel = current?.let {
+                            ChapterTitles.displayTitle(it.chapterIndex, it.chapterTitle)
+                        }.orEmpty()
                         ReaderBottomBar(
                             canPrev = state.pageIndex > 0,
                             canNext = state.pageIndex < state.pages.lastIndex,
@@ -201,7 +211,7 @@ fun ReaderScreen(
                             } else {
                                 "${state.pageIndex + 1} / ${state.pages.size}"
                             },
-                            chapterLabel = current?.chapterTitle.orEmpty(),
+                            chapterLabel = chapterLabel,
                             onPrev = viewModel::previousPage,
                             onNext = viewModel::nextPage,
                             modifier = Modifier.align(Alignment.BottomCenter)
@@ -213,32 +223,102 @@ fun ReaderScreen(
     }
 
     if (state.showToc) {
+        val currentChapter = state.pages.getOrNull(state.pageIndex)?.chapterIndex ?: 0
+        val tocListState = rememberLazyListState()
+        LaunchedEffect(state.showToc, currentChapter, state.chapters.size) {
+            if (state.chapters.isNotEmpty()) {
+                tocListState.animateScrollToItem(
+                    currentChapter.coerceIn(0, state.chapters.lastIndex)
+                )
+            }
+        }
         ModalBottomSheet(
             onDismissRequest = viewModel::closeToc,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
-            Text(
-                text = "目录",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                fontWeight = FontWeight.Bold
-            )
-            LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
-                itemsIndexed(state.chapters) { index, chapter ->
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
                     Text(
-                        text = chapter.title,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { viewModel.selectChapter(index) }
-                            .padding(horizontal = 20.dp, vertical = 14.dp),
-                        color = if (state.pages.getOrNull(state.pageIndex)?.chapterIndex == index) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        text = "目录",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
                     )
+                    Text(
+                        text = "共 ${state.chapters.size} 章 · 当前第 ${currentChapter + 1} 章",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
+                LazyColumn(
+                    state = tocListState,
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 32.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    itemsIndexed(state.chapters) { index, chapter ->
+                        val selected = index == currentChapter
+                        val title = ChapterTitles.displayTitle(index, chapter.title)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (selected) {
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                    } else {
+                                        MaterialTheme.colorScheme.surface
+                                    }
+                                )
+                                .clickable { viewModel.selectChapter(index) }
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (selected) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceVariant
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = ChapterTitles.sequenceLabel(index),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selected) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = title,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
             }
         }
