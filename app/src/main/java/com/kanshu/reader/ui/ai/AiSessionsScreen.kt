@@ -67,12 +67,15 @@ fun AiSessionsScreen(
     var showKeyDialog by remember { mutableStateOf(false) }
     var deepseekInput by remember { mutableStateOf("") }
     var siliconInput by remember { mutableStateOf("") }
+    var minimaxInput by remember { mutableStateOf("") }
     var pendingDelete by remember { mutableStateOf<AiSessionEntity?>(null) }
 
     val statusText = buildString {
         append(if (keys.hasDeepseek) "DeepSeek✓" else "DeepSeek未配")
         append(" · ")
         append(if (keys.hasSiliconflow) "生图✓" else "生图未配")
+        append(" · ")
+        append(if (keys.hasMinimax) "语音✓" else "语音未配")
     }
 
     Scaffold(
@@ -97,6 +100,7 @@ fun AiSessionsScreen(
                     IconButton(onClick = {
                         deepseekInput = ""
                         siliconInput = ""
+                        minimaxInput = ""
                         showKeyDialog = true
                     }) {
                         Icon(Icons.Default.Settings, contentDescription = "API Key")
@@ -110,6 +114,7 @@ fun AiSessionsScreen(
                     if (!keys.hasDeepseek) {
                         deepseekInput = ""
                         siliconInput = ""
+                        minimaxInput = ""
                         showKeyDialog = true
                         scope.launch { snackbarHostState.showSnackbar("开始前请先填写 DeepSeek API Key") }
                     } else {
@@ -165,7 +170,7 @@ fun AiSessionsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "只保存在本机。聊天用 DeepSeek；场景图用硅基流动 FLUX.1-dev。",
+                        "只保存在本机。聊天 DeepSeek · 生图硅基流动 · 朗读 MiniMax。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -187,7 +192,19 @@ fun AiSessionsScreen(
                         singleLine = true,
                         label = { Text("硅基流动 API Key") },
                         placeholder = {
-                            Text(if (keys.hasSiliconflow) "已保存，留空则不改" else "生图必填")
+                            Text(if (keys.hasSiliconflow) "已保存，留空则不改" else "生图用")
+                        },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = minimaxInput,
+                        onValueChange = { minimaxInput = it },
+                        singleLine = true,
+                        label = { Text("MiniMax API Key") },
+                        placeholder = {
+                            Text(if (keys.hasMinimax) "已保存，留空则不改" else "朗读用，需手动填写")
                         },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -200,7 +217,8 @@ fun AiSessionsScreen(
                     onClick = {
                         val d = deepseekInput.trim().takeIf { it.isNotEmpty() }
                         val s = siliconInput.trim().takeIf { it.isNotEmpty() }
-                        if (d == null && s == null) {
+                        val m = minimaxInput.trim().takeIf { it.isNotEmpty() }
+                        if (d == null && s == null && m == null) {
                             scope.launch {
                                 snackbarHostState.showSnackbar("请至少填写一项 Key")
                             }
@@ -212,7 +230,7 @@ fun AiSessionsScreen(
                             }
                             return@TextButton
                         }
-                        viewModel.saveKeys(d, s) { result ->
+                        viewModel.saveKeys(d, s, m) { result ->
                             result.onSuccess {
                                 showKeyDialog = false
                                 scope.launch { snackbarHostState.showSnackbar("已保存") }
@@ -238,6 +256,12 @@ fun AiSessionsScreen(
                             viewModel.clearSiliconflowApiKey()
                             scope.launch { snackbarHostState.showSnackbar("已清除生图 Key") }
                         }) { Text("清生图") }
+                    }
+                    if (keys.hasMinimax) {
+                        TextButton(onClick = {
+                            viewModel.clearMinimaxApiKey()
+                            scope.launch { snackbarHostState.showSnackbar("已清除语音 Key") }
+                        }) { Text("清语音") }
                     }
                     TextButton(onClick = { showKeyDialog = false }) { Text("取消") }
                 }

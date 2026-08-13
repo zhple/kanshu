@@ -23,6 +23,9 @@ class AiChatRepository(
     private val imageClient = SceneImageClient(
         apiKeyProvider = { themePreferences.siliconflowApiKey.first() }
     )
+    private val ttsClient = MinimaxTtsClient(
+        apiKeyProvider = { themePreferences.minimaxApiKey.first() }
+    )
 
     fun observeSessions(): Flow<List<AiSessionEntity>> = aiChatDao.observeSessions()
 
@@ -105,7 +108,7 @@ class AiChatRepository(
     }
 
     /**
-     * 为某条 assistant 消息生成场景配图（硅基流动 FLUX.1-dev + 会话/消息级 seed + Visual DNA）。
+     * 为某条 assistant 消息生成场景配图（硅基流动 FLUX.2-pro + 会话/消息级 seed + Visual DNA）。
      * @param force 为 true 时覆盖已有配图
      */
     suspend fun generateSceneImage(
@@ -203,6 +206,42 @@ class AiChatRepository(
 
     suspend fun needsOpening(sessionId: Long): Boolean = withContext(Dispatchers.IO) {
         aiChatDao.assistantCount(sessionId) == 0
+    }
+
+    suspend fun hasMinimaxKey(): Boolean =
+        themePreferences.minimaxApiKey.first().isNotBlank()
+
+    suspend fun currentTtsVoiceId(): String =
+        themePreferences.minimaxVoiceId.first()
+
+    suspend fun setTtsVoiceId(voiceId: String) {
+        themePreferences.setMinimaxVoiceId(voiceId)
+    }
+
+    /**
+     * 合成并缓存本条消息的朗读音频，返回本地 mp3 路径。
+     * @param force 强制重新合成（换声线后使用）
+     */
+    suspend fun synthesizeSpeech(
+        sessionId: Long,
+        messageId: Long,
+        text: String,
+        force: Boolean = false
+    ): String = withContext(Dispatchers.IO) {
+        val voiceId = themePreferences.minimaxVoiceId.first()
+        val dest = File(
+            context.filesDir,
+            "ai_tts/s${sessionId}_m${messageId}_${voiceId.hashCode()}.mp3"
+        )
+        if (!force && dest.exists() && dest.length() > 64) {
+            return@withContext dest.absolutePath
+        }
+        ttsClient.synthesizeToFile(
+            text = text,
+            voiceId = voiceId,
+            dest = dest
+        )
+        dest.absolutePath
     }
 
     fun streamReply(sessionId: Long, systemPrompt: String, history: List<ChatMessage>) =

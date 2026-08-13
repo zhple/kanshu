@@ -14,7 +14,8 @@ import kotlinx.coroutines.launch
 
 data class AiKeysStatus(
     val hasDeepseek: Boolean = false,
-    val hasSiliconflow: Boolean = false
+    val hasSiliconflow: Boolean = false,
+    val hasMinimax: Boolean = false
 )
 
 class AiSessionsViewModel(
@@ -26,17 +27,20 @@ class AiSessionsViewModel(
 
     val keysStatus: StateFlow<AiKeysStatus> = combine(
         themePreferences.deepseekApiKey,
-        themePreferences.siliconflowApiKey
-    ) { deepseek, silicon ->
+        themePreferences.siliconflowApiKey,
+        themePreferences.minimaxApiKey
+    ) { deepseek, silicon, minimax ->
         AiKeysStatus(
             hasDeepseek = deepseek.isNotBlank(),
-            hasSiliconflow = silicon.isNotBlank()
+            hasSiliconflow = silicon.isNotBlank(),
+            hasMinimax = minimax.isNotBlank()
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiKeysStatus())
 
     fun saveKeys(
         deepseekKey: String?,
         siliconflowKey: String?,
+        minimaxKey: String?,
         onDone: (Result<Unit>) -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -50,6 +54,10 @@ class AiSessionsViewModel(
                         require(siliconflowKey.trim().isNotEmpty()) { "硅基流动 API Key 不能为空" }
                         themePreferences.setSiliconflowApiKey(siliconflowKey)
                     }
+                    if (minimaxKey != null) {
+                        require(minimaxKey.trim().isNotEmpty()) { "MiniMax API Key 不能为空" }
+                        themePreferences.setMinimaxApiKey(minimaxKey)
+                    }
                 }
             )
         }
@@ -61,6 +69,10 @@ class AiSessionsViewModel(
 
     fun clearSiliconflowApiKey() {
         viewModelScope.launch { themePreferences.clearSiliconflowApiKey() }
+    }
+
+    fun clearMinimaxApiKey() {
+        viewModelScope.launch { themePreferences.clearMinimaxApiKey() }
     }
 
     fun deleteSession(id: Long) {

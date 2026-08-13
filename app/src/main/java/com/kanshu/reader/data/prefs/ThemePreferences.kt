@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.kanshu.reader.data.ai.TtsVoices
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -19,6 +20,8 @@ class ThemePreferences(private val context: Context) {
     private val githubTokenKey = stringPreferencesKey("github_token")
     private val deepseekApiKeyKey = stringPreferencesKey("deepseek_api_key")
     private val siliconflowApiKeyKey = stringPreferencesKey("siliconflow_api_key")
+    private val minimaxApiKeyKey = stringPreferencesKey("minimax_api_key")
+    private val minimaxVoiceIdKey = stringPreferencesKey("minimax_voice_id")
 
     val themeMode: Flow<AppThemeMode> = context.dataStore.data.map { prefs ->
         when (prefs[themeKey]) {
@@ -37,6 +40,14 @@ class ThemePreferences(private val context: Context) {
 
     val siliconflowApiKey: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[siliconflowApiKeyKey].orEmpty()
+    }
+
+    val minimaxApiKey: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[minimaxApiKeyKey].orEmpty()
+    }
+
+    val minimaxVoiceId: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[minimaxVoiceIdKey]?.ifBlank { null } ?: TtsVoices.defaultId
     }
 
     suspend fun setThemeMode(mode: AppThemeMode) {
@@ -78,6 +89,24 @@ class ThemePreferences(private val context: Context) {
     suspend fun clearSiliconflowApiKey() {
         context.dataStore.edit { prefs ->
             prefs.remove(siliconflowApiKeyKey)
+        }
+    }
+
+    suspend fun setMinimaxApiKey(key: String) {
+        context.dataStore.edit { prefs ->
+            prefs[minimaxApiKeyKey] = key.trim()
+        }
+    }
+
+    suspend fun clearMinimaxApiKey() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(minimaxApiKeyKey)
+        }
+    }
+
+    suspend fun setMinimaxVoiceId(voiceId: String) {
+        context.dataStore.edit { prefs ->
+            prefs[minimaxVoiceIdKey] = voiceId.trim().ifBlank { TtsVoices.defaultId }
         }
     }
 }

@@ -117,10 +117,22 @@ fun ReaderScreen(
                             .coerceAtLeast(1)
                     }
                     val textSizePx = with(density) { ReaderFontSize.toPx() }
+                    val lineHeightPx = with(density) { ReaderLineHeight.toPx() }
 
-                    LaunchedEffect(contentWidthPx, contentHeightPx, textSizePx, state.chapters.size) {
+                    LaunchedEffect(
+                        contentWidthPx,
+                        contentHeightPx,
+                        textSizePx,
+                        lineHeightPx,
+                        state.chapters.size
+                    ) {
                         if (state.chapters.isNotEmpty()) {
-                            viewModel.onPageSizeReady(contentWidthPx, contentHeightPx, textSizePx)
+                            viewModel.onPageSizeReady(
+                                widthPx = contentWidthPx,
+                                heightPx = contentHeightPx,
+                                textSizePx = textSizePx,
+                                lineHeightPx = lineHeightPx
+                            )
                         }
                     }
 
@@ -185,6 +197,8 @@ fun ReaderScreen(
                                     color = palette.text,
                                     fontSize = ReaderFontSize,
                                     lineHeight = ReaderLineHeight,
+                                    softWrap = true,
+                                    overflow = TextOverflow.Clip,
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }

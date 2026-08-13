@@ -88,16 +88,24 @@ class ReaderViewModel(
         }
     }
 
-    fun onPageSizeReady(widthPx: Int, heightPx: Int, textSizePx: Float) {
+    fun onPageSizeReady(
+        widthPx: Int,
+        heightPx: Int,
+        textSizePx: Float,
+        lineHeightPx: Float
+    ) {
         val state = _uiState.value
         if (state.chapters.isEmpty() || widthPx <= 0 || heightPx <= 0) return
 
         viewModelScope.launch(Dispatchers.Default) {
+            val safety = TextPaginator.suggestedSafetyPx(lineHeightPx)
             val pages = TextPaginator.paginateBook(
                 chapters = state.chapters,
                 widthPx = widthPx,
                 heightPx = heightPx,
-                textSizePx = textSizePx
+                textSizePx = textSizePx,
+                lineHeightPx = lineHeightPx,
+                safetyPx = safety
             )
             if (pages.isEmpty()) {
                 _uiState.update { it.copy(pages = emptyList(), needsMeasure = false) }

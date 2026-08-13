@@ -11,7 +11,7 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
- * 硅基流动文生图（默认 FLUX.1-dev）。
+ * 硅基流动文生图（FLUX.2 [pro]）。
  * seed 参与采样；不同会话/消息必须传入不同 seed，否则易撞图。
  */
 class SceneImageClient(
@@ -41,15 +41,20 @@ class SceneImageClient(
         if (dest.exists()) dest.delete()
 
         val size = pickImageSize(width, height)
+        // FLUX.2-pro 无独立 negative_prompt 字段，并入正文避免
+        val fullPrompt = buildString {
+            append(prompt.trim().take(1800))
+            if (negative.isNotBlank()) {
+                append(". Avoid: ")
+                append(negative.trim().take(400))
+            }
+        }
         val body = JSONObject()
             .put("model", MODEL)
-            .put("prompt", prompt.trim().take(2000))
+            .put("prompt", fullPrompt)
             .put("image_size", size)
             .put("seed", seed.coerceIn(0, 9_999_999_999L))
-            .put("num_inference_steps", 20)
-            .apply {
-                if (negative.isNotBlank()) put("negative_prompt", negative.trim().take(500))
-            }
+            .put("output_format", "jpeg")
             .toString()
             .toRequestBody(jsonMedia)
 
@@ -107,6 +112,6 @@ class SceneImageClient(
 
     companion object {
         const val BASE_URL = "https://api.siliconflow.cn/v1"
-        const val MODEL = "black-forest-labs/FLUX.1-dev"
+        const val MODEL = "black-forest-labs/FLUX.2-pro"
     }
 }

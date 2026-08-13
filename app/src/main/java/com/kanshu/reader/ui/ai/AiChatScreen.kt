@@ -1,6 +1,7 @@
 package com.kanshu.reader.ui.ai
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,13 +23,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -49,6 +56,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.kanshu.reader.data.ai.TtsVoice
+import com.kanshu.reader.data.ai.TtsVoices
 import com.kanshu.reader.data.db.AiMessageEntity
 import java.io.File
 
@@ -66,6 +75,7 @@ fun AiChatScreen(
     val visibleMessages = remember(messages) {
         messages.filter { it.role == "user" || it.role == "assistant" }
     }
+    val currentVoice = remember(state.voiceId) { TtsVoices.find(state.voiceId) }
 
     LaunchedEffect(state.error) {
         val msg = state.error ?: return@LaunchedEffect
@@ -91,11 +101,24 @@ fun AiChatScreen(
                     }
                 },
                 title = {
-                    Text(
-                        state.session?.title ?: "角色聊天",
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
+                    Column {
+                        Text(
+                            state.session?.title ?: "角色聊天",
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                        Text(
+                            "声线：${currentVoice.gender}·${currentVoice.label}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = viewModel::openVoicePicker) {
+                        Icon(Icons.Default.RecordVoiceOver, contentDescription = "选择声线")
+                    }
                 }
             )
         },
@@ -132,8 +155,9 @@ fun AiChatScreen(
                             msg.content
                         }
                         if (content.isNotBlank() || msg.role == "user") {
+                            val display = msg.copy(content = content.ifBlank { "…" })
                             MessageBubble(
-                                message = msg.copy(content = content.ifBlank { "…" }),
+                                message = display,
                                 generatingImage = state.generatingImageFor == msg.id,
                                 canGenerateImage = msg.role == "assistant" &&
                                     msg.content.isNotBlank() &&
@@ -141,11 +165,19 @@ fun AiChatScreen(
                                     state.generatingImageFor == null,
                                 onGenerateImage = { force ->
                                     viewModel.generateSceneImage(msg.id, force = force)
-                                }
+                                },
+                                speaking = state.speakingMessageId == msg.id,
+                                preparingSpeech = state.preparingSpeechFor == msg.id,
+                                canSpeak = msg.role == "assistant" &&
+                                    msg.content.isNotBlank() &&
+                                    !state.streaming &&
+                                    state.preparingSpeechFor == null,
+                                onToggleSpeech = { viewModel.toggleSpeech(display) }
                             )
                         }
                     }
-                    if (state.streaming && visibleMessages.none { it.role == "assistant" && it.content.isEmpty() } &&
+                    if (state.streaming &&
+                        visibleMessages.none { it.role == "assistant" && it.content.isEmpty() } &&
                         state.streamingText.isNotEmpty() &&
                         visibleMessages.lastOrNull()?.role != "assistant"
                     ) {
@@ -159,7 +191,11 @@ fun AiChatScreen(
                                 ),
                                 generatingImage = false,
                                 canGenerateImage = false,
-                                onGenerateImage = {}
+                                onGenerateImage = {},
+                                speaking = false,
+                                preparingSpeech = false,
+                                canSpeak = false,
+                                onToggleSpeech = {}
                             )
                         }
                     }
@@ -204,6 +240,67 @@ fun AiChatScreen(
             }
         }
     }
+
+    if (state.showVoicePicker) {
+        VoicePickerDialog(
+            voices = viewModel.voices,
+            selectedId = state.voiceId,
+            onSelect = viewModel::selectVoice,
+            onDismiss = viewModel::closeVoicePicker
+        )
+    }
+}
+
+@Composable
+private fun VoicePickerDialog(
+    voices: List<TtsVoice>,
+    selectedId: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择声线") },
+        text = {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                items(voices, key = { it.id }) { voice ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(voice.id) }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = voice.id == selectedId,
+                            onClick = { onSelect(voice.id) }
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "${voice.gender} · ${voice.label}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                voice.style,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    HorizontalDivider()
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("关闭") }
+        }
+    )
 }
 
 @Composable
@@ -211,7 +308,11 @@ private fun MessageBubble(
     message: AiMessageEntity,
     generatingImage: Boolean,
     canGenerateImage: Boolean,
-    onGenerateImage: (force: Boolean) -> Unit
+    onGenerateImage: (force: Boolean) -> Unit,
+    speaking: Boolean,
+    preparingSpeech: Boolean,
+    canSpeak: Boolean,
+    onToggleSpeech: () -> Unit
 ) {
     val mine = message.role == "user"
     val hasImage = message.imagePath.isNotBlank() && File(message.imagePath).exists()
@@ -245,8 +346,45 @@ private fun MessageBubble(
         }
 
         if (!mine && message.id > 0) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                if (preparingSpeech) {
+                    Row(
+                        modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Text(
+                            "合成语音中…",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else if (canSpeak || speaking) {
+                    TextButton(
+                        onClick = onToggleSpeech,
+                        enabled = canSpeak || speaking,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                    ) {
+                        Icon(
+                            if (speaking) Icons.Default.Stop else Icons.AutoMirrored.Outlined.VolumeUp,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.size(4.dp))
+                        Text(if (speaking) "停止" else "朗读")
+                    }
+                }
+            }
+
             if (hasImage) {
-                Spacer(Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 val ctx = LocalContext.current
                 val file = File(message.imagePath)
                 AsyncImage(
@@ -277,7 +415,7 @@ private fun MessageBubble(
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     Text(
-                        "生成场景图中…（约数秒到十几秒）",
+                        "生成场景图中…",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -292,7 +430,7 @@ private fun MessageBubble(
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
-                    Spacer(Modifier.size(4.dp))
+                    Spacer(modifier = Modifier.size(4.dp))
                     Text("生成场景图")
                 }
             }
