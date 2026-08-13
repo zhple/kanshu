@@ -5,9 +5,6 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import kotlin.math.max
 
-import com.kanshu.reader.reader.Chapter
-import com.kanshu.reader.reader.ChapterTitles
-
 data class ReaderPage(
     val text: String,
     val chapterIndex: Int,

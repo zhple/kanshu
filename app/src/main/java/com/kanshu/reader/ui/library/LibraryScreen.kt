@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,11 +21,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
@@ -35,6 +38,7 @@ import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -87,6 +91,8 @@ fun LibraryScreen(
     val currentFolderId by viewModel.currentFolderId.collectAsStateWithLifecycle()
     val currentFolderName by viewModel.currentFolderName.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val sourceFilter by viewModel.sourceFilter.collectAsStateWithLifecycle()
+    val syncMessage by viewModel.syncMessage.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val app = context.applicationContext as KanshuApp
     val snackbarHostState = remember { SnackbarHostState() }
@@ -110,6 +116,12 @@ fun LibraryScreen(
         }
     }
 
+    LaunchedEffect(syncMessage) {
+        val msg = syncMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(msg)
+        viewModel.consumeSyncMessage()
+    }
+
     val picker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -123,7 +135,7 @@ fun LibraryScreen(
             )
             importing = false
             result.onSuccess {
-                snackbarHostState.showSnackbar("导入成功")
+                snackbarHostState.showSnackbar("导入成功（本地书）")
             }.onFailure {
                 snackbarHostState.showSnackbar(it.message ?: "导入失败")
             }
@@ -133,6 +145,8 @@ fun LibraryScreen(
     fun checkUpdate(manual: Boolean) {
         scope.launch {
             checkingUpdate = true
+            // 更新检查时同时同步仓库默认书
+            viewModel.syncDefaultBooks(manual = true)
             val result = UpdateChecker.check()
             checkingUpdate = false
             result.onSuccess { info ->
@@ -189,6 +203,9 @@ fun LibraryScreen(
                             Icon(Icons.Default.CreateNewFolder, contentDescription = "新建文件夹")
                         }
                     }
+                    IconButton(onClick = { viewModel.syncDefaultBooks(manual = true) }) {
+                        Icon(Icons.Default.CloudDownload, contentDescription = "同步仓库书")
+                    }
                     IconButton(
                         onClick = { checkUpdate(manual = true) },
                         enabled = !checkingUpdate
@@ -232,40 +249,66 @@ fun LibraryScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        val showFolders = !inFolder && folders.isNotEmpty()
+        val showFolders = !inFolder && folders.isNotEmpty() && sourceFilter != BookSourceFilter.LOCAL
         val empty = books.isEmpty() && !showFolders
 
-        if (empty) {
-            EmptyLibrary(
-                inFolder = inFolder,
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (!inFolder) {
-                    items(folders, key = { "f-${it.id}" }) { folder ->
-                        FolderRow(
-                            folder = folder,
-                            bookCount = viewModel.bookCountInFolder(folder.id, allBooks),
-                            onClick = { viewModel.openFolder(folder) },
-                            onDelete = { pendingDeleteFolder = folder }
+                FilterChip(
+                    selected = sourceFilter == BookSourceFilter.ALL,
+                    onClick = { viewModel.setSourceFilter(BookSourceFilter.ALL) },
+                    label = { Text("全部") }
+                )
+                FilterChip(
+                    selected = sourceFilter == BookSourceFilter.REMOTE,
+                    onClick = { viewModel.setSourceFilter(BookSourceFilter.REMOTE) },
+                    label = { Text("仓库书") }
+                )
+                FilterChip(
+                    selected = sourceFilter == BookSourceFilter.LOCAL,
+                    onClick = { viewModel.setSourceFilter(BookSourceFilter.LOCAL) },
+                    label = { Text("我的上传") }
+                )
+            }
+
+            if (empty) {
+                EmptyLibrary(
+                    inFolder = inFolder,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (!inFolder && sourceFilter != BookSourceFilter.LOCAL) {
+                        items(folders, key = { "f-${it.id}" }) { folder ->
+                            FolderRow(
+                                folder = folder,
+                                bookCount = viewModel.bookCountInFolder(folder.id, allBooks),
+                                onClick = { viewModel.openFolder(folder) },
+                                onDelete = { pendingDeleteFolder = folder }
+                            )
+                        }
+                    }
+                    items(books, key = { "b-${it.id}" }) { book ->
+                        BookRow(
+                            book = book,
+                            onClick = { onOpenBook(book.id) },
+                            onMenu = { bookMenu = book }
                         )
                     }
-                }
-                items(books, key = { "b-${it.id}" }) { book ->
-                    BookRow(
-                        book = book,
-                        onClick = { onOpenBook(book.id) },
-                        onMenu = { bookMenu = book }
-                    )
                 }
             }
         }
@@ -275,7 +318,11 @@ fun LibraryScreen(
         AlertDialog(
             onDismissRequest = { bookMenu = null },
             title = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-            text = { Text("选择操作") },
+            text = {
+                Text(
+                    if (book.isRemote) "仓库默认书 · 可移动或删除本地副本" else "本地上传 · 选择操作"
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -377,7 +424,15 @@ fun LibraryScreen(
         AlertDialog(
             onDismissRequest = { pendingDeleteBook = null },
             title = { Text("删除书籍") },
-            text = { Text("确定删除「${book.title}」吗？") },
+            text = {
+                Text(
+                    if (book.isRemote) {
+                        "确定删除「${book.title}」吗？这是仓库书，删除后下次同步可能重新下载。"
+                    } else {
+                        "确定删除「${book.title}」吗？"
+                    }
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -453,7 +508,7 @@ private fun EmptyLibrary(inFolder: Boolean, modifier: Modifier = Modifier) {
                 if (inFolder) {
                     "点右下角导入书籍，或从根目录把书移进来"
                 } else {
-                    "点右下角导入 TXT / EPUB / PDF，也可新建文件夹分类"
+                    "仓库书会自动同步；也可本地上传 TXT / EPUB / PDF"
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -549,13 +604,36 @@ private fun BookRow(
         }
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = book.title,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = FontWeight.SemiBold
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = book.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = if (book.isRemote) "仓库" else "本地",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (book.isRemote) {
+                        MaterialTheme.colorScheme.secondary
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(
+                            if (book.isRemote) {
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f)
+                            } else {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            }
+                        )
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
             Spacer(Modifier.height(2.dp))
             Text(
                 text = "${book.author} · ${book.format}",

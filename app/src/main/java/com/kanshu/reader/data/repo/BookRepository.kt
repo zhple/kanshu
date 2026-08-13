@@ -23,6 +23,8 @@ class BookRepository(
     private val booksDir: File
         get() = File(filesDir, "books").also { if (!it.exists()) it.mkdirs() }
 
+    fun booksFile(name: String): File = File(booksDir, name)
+
     fun observeBooks(): Flow<List<BookEntity>> = bookDao.observeBooks()
 
     fun observeBooksInFolder(folderId: Long?): Flow<List<BookEntity>> =
@@ -33,6 +35,13 @@ class BookRepository(
     suspend fun getBook(id: Long): BookEntity? = bookDao.getBook(id)
 
     suspend fun getFolder(id: Long): FolderEntity? = folderDao.getFolder(id)
+
+    suspend fun getByRemoteId(remoteId: String): BookEntity? = bookDao.getByRemoteId(remoteId)
+
+    suspend fun ensureFolder(name: String): Long = withContext(Dispatchers.IO) {
+        folderDao.getAllOnce().firstOrNull { it.name == name }?.id
+            ?: folderDao.insert(FolderEntity(name = name))
+    }
 
     suspend fun importBook(
         contentResolver: ContentResolver,
@@ -58,11 +67,34 @@ class BookRepository(
                         author = meta.author,
                         format = format.name,
                         fileName = safeName,
-                        folderId = folderId
+                        folderId = folderId,
+                        source = BookEntity.SOURCE_LOCAL,
+                        remoteId = null
                     )
                 )
             }
         }
+
+    suspend fun insertRemoteBook(
+        remoteId: String,
+        title: String,
+        author: String,
+        format: String,
+        fileName: String,
+        folderId: Long?
+    ): Long = withContext(Dispatchers.IO) {
+        bookDao.insert(
+            BookEntity(
+                title = title,
+                author = author,
+                format = format.uppercase(),
+                fileName = fileName,
+                folderId = folderId,
+                source = BookEntity.SOURCE_REMOTE,
+                remoteId = remoteId
+            )
+        )
+    }
 
     suspend fun createFolder(name: String): Long = withContext(Dispatchers.IO) {
         val trimmed = name.trim()

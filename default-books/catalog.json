@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "books": [
+    {
+      "id": "dianqi-maxituan",
+      "title": "电气马戏团",
+      "author": "仓库默认",
+      "file": "dianqi-maxituan.epub",
+      "format": "EPUB"
+    }
+  ]
+}

@@ -7,20 +7,29 @@ import com.kanshu.reader.data.db.BookEntity
 import com.kanshu.reader.data.db.FolderEntity
 import com.kanshu.reader.data.prefs.AppThemeMode
 import com.kanshu.reader.data.prefs.ThemePreferences
+import com.kanshu.reader.data.remote.DefaultBooksSync
 import com.kanshu.reader.data.repo.BookRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+enum class BookSourceFilter {
+    ALL,
+    REMOTE,
+    LOCAL
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class LibraryViewModel(
     private val bookRepository: BookRepository,
-    private val themePreferences: ThemePreferences
+    private val themePreferences: ThemePreferences,
+    private val defaultBooksSync: DefaultBooksSync
 ) : ViewModel() {
     private val _currentFolderId = MutableStateFlow<Long?>(null)
     val currentFolderId: StateFlow<Long?> = _currentFolderId.asStateFlow()
@@ -28,18 +37,52 @@ class LibraryViewModel(
     private val _currentFolderName = MutableStateFlow<String?>(null)
     val currentFolderName: StateFlow<String?> = _currentFolderName.asStateFlow()
 
+    private val _sourceFilter = MutableStateFlow(BookSourceFilter.ALL)
+    val sourceFilter: StateFlow<BookSourceFilter> = _sourceFilter.asStateFlow()
+
+    private val _syncMessage = MutableStateFlow<String?>(null)
+    val syncMessage: StateFlow<String?> = _syncMessage.asStateFlow()
+
     val folders: StateFlow<List<FolderEntity>> = bookRepository.observeFolders()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val books: StateFlow<List<BookEntity>> = _currentFolderId
+    private val booksInFolder = _currentFolderId
         .flatMapLatest { folderId -> bookRepository.observeBooksInFolder(folderId) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val books: StateFlow<List<BookEntity>> = combine(booksInFolder, _sourceFilter) { list, filter ->
+        when (filter) {
+            BookSourceFilter.ALL -> list
+            BookSourceFilter.REMOTE -> list.filter { it.isRemote }
+            BookSourceFilter.LOCAL -> list.filter { !it.isRemote }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val allBooks: StateFlow<List<BookEntity>> = bookRepository.observeBooks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val themeMode: StateFlow<AppThemeMode> = themePreferences.themeMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppThemeMode.DAY)
+
+    init {
+        syncDefaultBooks()
+    }
+
+    fun setSourceFilter(filter: BookSourceFilter) {
+        _sourceFilter.value = filter
+    }
+
+    fun syncDefaultBooks(manual: Boolean = false) {
+        viewModelScope.launch {
+            val result = defaultBooksSync.sync()
+            if (manual || result.added > 0 || result.failed > 0) {
+                _syncMessage.value = result.message
+            }
+        }
+    }
+
+    fun consumeSyncMessage() {
+        _syncMessage.value = null
+    }
 
     fun openFolder(folder: FolderEntity) {
         _currentFolderId.value = folder.id
@@ -106,11 +149,12 @@ class LibraryViewModel(
     companion object {
         fun factory(
             bookRepository: BookRepository,
-            themePreferences: ThemePreferences
+            themePreferences: ThemePreferences,
+            defaultBooksSync: DefaultBooksSync
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return LibraryViewModel(bookRepository, themePreferences) as T
+                return LibraryViewModel(bookRepository, themePreferences, defaultBooksSync) as T
             }
         }
     }

@@ -13,14 +13,25 @@ android {
         applicationId = "com.kanshu.reader"
         minSdk = 24
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.2.1"
+        versionCode = 5
+        versionName = "1.3.0"
 
-        // 自动更新：指向 GitHub Releases latest API（推送仓库后按实际 owner/repo 调整）
+        // 自动更新：指向 GitHub Releases latest API
         buildConfigField(
             "String",
             "UPDATE_API_URL",
             "\"https://api.github.com/repos/zhple/kanshu/releases/latest\""
+        )
+        // 仓库默认书：catalog + 文件目录（raw）
+        buildConfigField(
+            "String",
+            "DEFAULT_BOOKS_CATALOG_URL",
+            "\"https://raw.githubusercontent.com/zhple/kanshu/main/default-books/catalog.json\""
+        )
+        buildConfigField(
+            "String",
+            "DEFAULT_BOOKS_BASE_URL",
+            "\"https://raw.githubusercontent.com/zhple/kanshu/main/default-books\""
         )
     }
 

@@ -48,7 +48,8 @@ class MainActivity : ComponentActivity() {
                             val vm: LibraryViewModel = viewModel(
                                 factory = LibraryViewModel.factory(
                                     app.container.bookRepository,
-                                    app.container.themePreferences
+                                    app.container.themePreferences,
+                                    app.container.defaultBooksSync
                                 )
                             )
                             LibraryScreen(

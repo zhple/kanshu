@@ -23,6 +23,12 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE id = :id")
     suspend fun getBook(id: Long): BookEntity?
 
+    @Query("SELECT * FROM books WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun getByRemoteId(remoteId: String): BookEntity?
+
+    @Query("SELECT remoteId FROM books WHERE remoteId IS NOT NULL")
+    suspend fun listRemoteIds(): List<String>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(book: BookEntity): Long
 
