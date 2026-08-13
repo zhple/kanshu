@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "books": [
     {
       "id": "dianqi-maxituan",
@@ -35,6 +35,13 @@
       "author": "仓库默认",
       "file": "txt-1.txt",
       "format": "TXT"
+    },
+    {
+      "id": "user-cdc9079bc9",
+      "title": "献给阿尔吉侬的花束",
+      "author": "丹尼尔·凯斯",
+      "file": "user-cdc9079bc9.epub",
+      "format": "EPUB"
     }
   ]
 }
