@@ -7,8 +7,8 @@
 ## 下载安装
 
 - 最新安装包：[Releases](https://github.com/zhple/kanshu/releases/latest)
-- 当前推荐：`kanshu-v1.4.3.apk`（[v10](https://github.com/zhple/kanshu/releases/tag/v10)）
-- 仓库内也有副本：`release/kanshu-v1.4.3.apk`
+- 当前推荐：`kanshu-v1.5.0.apk`（[v10](https://github.com/zhple/kanshu/releases/tag/v12)）
+- 仓库内也有副本：`release/kanshu-v1.5.0.apk`
 
 Android 8.0+（API 24+）。首次安装若提示「未知来源」，按系统提示允许即可。
 
