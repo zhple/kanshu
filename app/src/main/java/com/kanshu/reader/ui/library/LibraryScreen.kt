@@ -114,6 +114,8 @@ fun LibraryScreen(
     var pendingDeleteBook by remember { mutableStateOf<BookEntity?>(null) }
     var pendingDeleteFolder by remember { mutableStateOf<FolderEntity?>(null) }
     var pendingMoveBook by remember { mutableStateOf<BookEntity?>(null) }
+    var pendingRenameBook by remember { mutableStateOf<BookEntity?>(null) }
+    var renameInput by remember { mutableStateOf("") }
     var bookMenu by remember { mutableStateOf<BookEntity?>(null) }
     var showTokenDialog by remember { mutableStateOf(false) }
     var tokenInput by remember { mutableStateOf("") }
@@ -367,11 +369,21 @@ fun LibraryScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         if (book.isRemote) {
-                            "仓库书 · 可再次上传覆盖，或移动/删除本地副本"
+                            "仓库书 · 可改名、上传覆盖，或移动/删除本地副本"
                         } else {
-                            "本地书 · 可上传到远程仓库供同步"
+                            "本地书 · 可改名，或上传到远程仓库供同步"
                         }
                     )
+                    TextButton(
+                        onClick = {
+                            renameInput = book.title
+                            pendingRenameBook = book
+                            bookMenu = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("修改书名")
+                    }
                     TextButton(
                         onClick = { requestUpload(book) },
                         modifier = Modifier.fillMaxWidth()
@@ -516,6 +528,41 @@ fun LibraryScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showCreateFolder = false }) { Text("取消") }
+            }
+        )
+    }
+
+    pendingRenameBook?.let { book ->
+        AlertDialog(
+            onDismissRequest = { pendingRenameBook = null },
+            title = { Text("修改书名") },
+            text = {
+                OutlinedTextField(
+                    value = renameInput,
+                    onValueChange = { renameInput = it },
+                    singleLine = true,
+                    label = { Text("书名") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.renameBook(book.id, renameInput) { result ->
+                            result.onSuccess {
+                                pendingRenameBook = null
+                                scope.launch { snackbarHostState.showSnackbar("已改名") }
+                            }.onFailure {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(it.message ?: "改名失败")
+                                }
+                            }
+                        }
+                    }
+                ) { Text("保存") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRenameBook = null }) { Text("取消") }
             }
         )
     }

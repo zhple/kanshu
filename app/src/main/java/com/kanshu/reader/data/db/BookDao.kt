@@ -48,6 +48,9 @@ interface BookDao {
         lastReadAt: Long = System.currentTimeMillis()
     )
 
+    @Query("UPDATE books SET title = :title WHERE id = :id")
+    suspend fun rename(id: Long, title: String)
+
     @Query("UPDATE books SET folderId = :folderId WHERE id = :bookId")
     suspend fun updateFolder(bookId: Long, folderId: Long?)
 

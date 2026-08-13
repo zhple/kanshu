@@ -167,6 +167,12 @@ class LibraryViewModel(
         }
     }
 
+    fun renameBook(id: Long, title: String, onDone: (Result<Unit>) -> Unit = {}) {
+        viewModelScope.launch {
+            onDone(runCatching { bookRepository.renameBook(id, title); Unit })
+        }
+    }
+
     fun moveBook(bookId: Long, folderId: Long?) {
         viewModelScope.launch {
             bookRepository.moveBook(bookId, folderId)

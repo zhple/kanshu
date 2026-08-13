@@ -71,7 +71,7 @@ class ReaderViewModel(
                 _uiState.update {
                     it.copy(
                         loading = false,
-                        title = parsed.metadata.title.ifBlank { book.title },
+                        title = book.title.ifBlank { parsed.metadata.title },
                         chapters = parsed.chapters,
                         pendingChapterIndex = chapterIndex,
                         pendingPageInChapter = book.scrollOffset.coerceAtLeast(0),

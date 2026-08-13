@@ -113,6 +113,12 @@ class BookRepository(
         folderDao.delete(id)
     }
 
+    suspend fun renameBook(id: Long, title: String) = withContext(Dispatchers.IO) {
+        val trimmed = title.trim()
+        require(trimmed.isNotEmpty()) { "书名不能为空" }
+        bookDao.rename(id, trimmed)
+    }
+
     suspend fun moveBook(bookId: Long, folderId: Long?) = withContext(Dispatchers.IO) {
         bookDao.updateFolder(bookId, folderId)
     }
