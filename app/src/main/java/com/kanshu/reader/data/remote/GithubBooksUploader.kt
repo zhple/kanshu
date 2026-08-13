@@ -27,10 +27,9 @@ class GithubBooksUploader(
 
     suspend fun uploadBook(book: BookEntity): Result<UploadResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val saved = themePreferences.githubToken.first().trim()
-            val token = saved.ifBlank { BuildConfig.DEFAULT_GITHUB_TOKEN.trim() }
+            val token = themePreferences.githubToken.first().trim()
             require(token.isNotEmpty()) {
-                "还没配置上传权限。请点设置填写 Token，或使用已内置权限的安装包。"
+                "还没配置上传权限。请点右上角设置，填写 GitHub Token 后再上传。"
             }
 
             val file = bookRepository.resolveFile(book)
@@ -136,7 +135,13 @@ class GithubBooksUploader(
                 RepoFile(bytes, sha)
             }
             404 -> null
-            else -> error("读取仓库失败 HTTP ${conn.responseCode}: ${readError(conn)}")
+            else -> {
+                val body = readError(conn)
+                if (conn.responseCode == 401 || body.contains("Bad credentials", ignoreCase = true)) {
+                    error("上传权限失效（Token 无效或过期）。请点右上角设置，重新填写 GitHub Token。")
+                }
+                error("读取仓库失败 HTTP ${conn.responseCode}: ${body.take(200)}")
+            }
         }
     }
 
@@ -160,7 +165,11 @@ class GithubBooksUploader(
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
         conn.outputStream.use { it.write(payload.toString().toByteArray(StandardCharsets.UTF_8)) }
         if (conn.responseCode !in 200..299) {
-            error("上传失败 HTTP ${conn.responseCode}: ${readError(conn)}")
+            val body = readError(conn)
+            if (conn.responseCode == 401 || body.contains("Bad credentials", ignoreCase = true)) {
+                error("上传权限失效（Token 无效或过期）。请点右上角设置，重新填写 GitHub Token。")
+            }
+            error("上传失败 HTTP ${conn.responseCode}: ${body.take(200)}")
         }
     }
 

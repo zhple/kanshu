@@ -422,33 +422,23 @@ fun LibraryScreen(
                 showTokenDialog = false
                 pendingUploadBook = null
             },
-                    title = { Text("上传设置（可选）") },
+            title = { Text("上传权限") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        if (BuildConfig.HAS_DEFAULT_GITHUB_TOKEN) {
-                            "当前安装包已内置上传权限，一般不用再填。只有换账号时才需要改 Token。"
-                        } else {
-                            "填写 GitHub Token 后才能上传。更省事的做法：用已内置权限的安装包。"
-                        },
+                        "上传需要 GitHub Token，只保存在本机，不会进仓库或安装包。创建时勾选 repo 权限即可。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        "状态：${
-                            when {
-                                hasGithubToken && BuildConfig.HAS_DEFAULT_GITHUB_TOKEN -> "可用（已内置）"
-                                hasGithubToken -> "可用（手动配置）"
-                                else -> "不可用"
-                            }
-                        }",
+                        "状态：${if (hasGithubToken) "已配置" else "未配置"}",
                         style = MaterialTheme.typography.labelMedium
                     )
                     OutlinedTextField(
                         value = tokenInput,
                         onValueChange = { tokenInput = it },
                         singleLine = true,
-                        label = { Text("自定义 Token（可留空）") },
+                        label = { Text("GitHub Token") },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         modifier = Modifier.fillMaxWidth()
@@ -463,7 +453,7 @@ fun LibraryScreen(
                                 showTokenDialog = false
                                 val book = pendingUploadBook
                                 pendingUploadBook = null
-                                scope.launch { snackbarHostState.showSnackbar("Token 已保存") }
+                                scope.launch { snackbarHostState.showSnackbar("Token 已保存到本机") }
                                 if (book != null) {
                                     viewModel.uploadBookToRemote(book)
                                 }
