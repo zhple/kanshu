@@ -5,6 +5,8 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import com.kanshu.reader.data.db.BookDao
 import com.kanshu.reader.data.db.BookEntity
+import com.kanshu.reader.data.db.FolderDao
+import com.kanshu.reader.data.db.FolderEntity
 import com.kanshu.reader.reader.BookFormat
 import com.kanshu.reader.reader.BookParser
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +17,7 @@ import java.util.UUID
 
 class BookRepository(
     private val bookDao: BookDao,
+    private val folderDao: FolderDao,
     private val filesDir: File
 ) {
     private val booksDir: File
@@ -22,14 +25,25 @@ class BookRepository(
 
     fun observeBooks(): Flow<List<BookEntity>> = bookDao.observeBooks()
 
+    fun observeBooksInFolder(folderId: Long?): Flow<List<BookEntity>> =
+        bookDao.observeBooksInFolder(folderId)
+
+    fun observeFolders(): Flow<List<FolderEntity>> = folderDao.observeFolders()
+
     suspend fun getBook(id: Long): BookEntity? = bookDao.getBook(id)
 
-    suspend fun importBook(contentResolver: ContentResolver, uri: Uri): Result<Long> =
+    suspend fun getFolder(id: Long): FolderEntity? = folderDao.getFolder(id)
+
+    suspend fun importBook(
+        contentResolver: ContentResolver,
+        uri: Uri,
+        folderId: Long? = null
+    ): Result<Long> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val displayName = queryDisplayName(contentResolver, uri) ?: "book"
                 val format = BookFormat.fromFileName(displayName)
-                    ?: error("仅支持 TXT 或 EPUB 文件")
+                    ?: error("仅支持 TXT、EPUB 或 PDF 文件")
 
                 val safeName = UUID.randomUUID().toString() + format.extension
                 val dest = File(booksDir, safeName)
@@ -43,11 +57,33 @@ class BookRepository(
                         title = meta.title,
                         author = meta.author,
                         format = format.name,
-                        fileName = safeName
+                        fileName = safeName,
+                        folderId = folderId
                     )
                 )
             }
         }
+
+    suspend fun createFolder(name: String): Long = withContext(Dispatchers.IO) {
+        val trimmed = name.trim()
+        require(trimmed.isNotEmpty()) { "文件夹名称不能为空" }
+        folderDao.insert(FolderEntity(name = trimmed))
+    }
+
+    suspend fun renameFolder(id: Long, name: String) = withContext(Dispatchers.IO) {
+        val trimmed = name.trim()
+        require(trimmed.isNotEmpty()) { "文件夹名称不能为空" }
+        folderDao.rename(id, trimmed)
+    }
+
+    suspend fun deleteFolder(id: Long) = withContext(Dispatchers.IO) {
+        bookDao.clearFolder(id)
+        folderDao.delete(id)
+    }
+
+    suspend fun moveBook(bookId: Long, folderId: Long?) = withContext(Dispatchers.IO) {
+        bookDao.updateFolder(bookId, folderId)
+    }
 
     suspend fun deleteBook(book: BookEntity) = withContext(Dispatchers.IO) {
         File(booksDir, book.fileName).delete()

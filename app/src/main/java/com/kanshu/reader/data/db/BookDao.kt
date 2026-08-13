@@ -11,6 +11,15 @@ interface BookDao {
     @Query("SELECT * FROM books ORDER BY CASE WHEN lastReadAt = 0 THEN addedAt ELSE lastReadAt END DESC")
     fun observeBooks(): Flow<List<BookEntity>>
 
+    @Query(
+        """
+        SELECT * FROM books
+        WHERE (:folderId IS NULL AND folderId IS NULL) OR folderId = :folderId
+        ORDER BY CASE WHEN lastReadAt = 0 THEN addedAt ELSE lastReadAt END DESC
+        """
+    )
+    fun observeBooksInFolder(folderId: Long?): Flow<List<BookEntity>>
+
     @Query("SELECT * FROM books WHERE id = :id")
     suspend fun getBook(id: Long): BookEntity?
 
@@ -33,6 +42,15 @@ interface BookDao {
         lastReadAt: Long = System.currentTimeMillis()
     )
 
+    @Query("UPDATE books SET folderId = :folderId WHERE id = :bookId")
+    suspend fun updateFolder(bookId: Long, folderId: Long?)
+
+    @Query("UPDATE books SET folderId = NULL WHERE folderId = :folderId")
+    suspend fun clearFolder(folderId: Long)
+
     @Query("DELETE FROM books WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Query("SELECT COUNT(*) FROM books WHERE folderId = :folderId")
+    suspend fun countInFolder(folderId: Long): Int
 }

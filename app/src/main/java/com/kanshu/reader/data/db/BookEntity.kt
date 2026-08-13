@@ -10,6 +10,7 @@ data class BookEntity(
     val author: String,
     val format: String,
     val fileName: String,
+    val folderId: Long? = null,
     val addedAt: Long = System.currentTimeMillis(),
     val chapterIndex: Int = 0,
     val scrollOffset: Int = 0,

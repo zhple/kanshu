@@ -22,22 +22,24 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.AlertDialog
-import androidx.compose.runtime.LaunchedEffect
-import com.kanshu.reader.BuildConfig
-import com.kanshu.reader.update.AppUpdateInfo
-import com.kanshu.reader.update.UpdateChecker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -46,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,14 +57,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kanshu.reader.BuildConfig
 import com.kanshu.reader.KanshuApp
 import com.kanshu.reader.data.db.BookEntity
+import com.kanshu.reader.data.db.FolderEntity
 import com.kanshu.reader.data.prefs.AppThemeMode
+import com.kanshu.reader.update.AppUpdateInfo
+import com.kanshu.reader.update.UpdateChecker
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -74,18 +82,29 @@ fun LibraryScreen(
     onOpenBook: (Long) -> Unit
 ) {
     val books by viewModel.books.collectAsStateWithLifecycle()
+    val allBooks by viewModel.allBooks.collectAsStateWithLifecycle()
+    val folders by viewModel.folders.collectAsStateWithLifecycle()
+    val currentFolderId by viewModel.currentFolderId.collectAsStateWithLifecycle()
+    val currentFolderName by viewModel.currentFolderName.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val app = context.applicationContext as KanshuApp
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    var pendingDelete by remember { mutableStateOf<BookEntity?>(null) }
+
     var importing by remember { mutableStateOf(false) }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    var showCreateFolder by remember { mutableStateOf(false) }
+    var folderNameInput by remember { mutableStateOf("") }
+    var pendingDeleteBook by remember { mutableStateOf<BookEntity?>(null) }
+    var pendingDeleteFolder by remember { mutableStateOf<FolderEntity?>(null) }
+    var pendingMoveBook by remember { mutableStateOf<BookEntity?>(null) }
+    var bookMenu by remember { mutableStateOf<BookEntity?>(null) }
+
+    val inFolder = currentFolderId != null
 
     LaunchedEffect(Unit) {
-        // 进入书架时静默检查一次
         UpdateChecker.check().onSuccess { info ->
             if (info != null) updateInfo = info
         }
@@ -97,7 +116,11 @@ fun LibraryScreen(
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             importing = true
-            val result = app.container.bookRepository.importBook(context.contentResolver, uri)
+            val result = app.container.bookRepository.importBook(
+                contentResolver = context.contentResolver,
+                uri = uri,
+                folderId = currentFolderId
+            )
             importing = false
             result.onSuccess {
                 snackbarHostState.showSnackbar("导入成功")
@@ -131,25 +154,46 @@ fun LibraryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    if (inFolder) {
+                        IconButton(onClick = viewModel::openRoot) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        }
+                    }
+                },
                 title = {
                     Column {
-                        Text("看书", fontWeight = FontWeight.Bold)
                         Text(
-                            text = if (themeMode == AppThemeMode.DAY) "白天模式" else "黑夜模式",
+                            text = currentFolderName ?: "看书",
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (inFolder) {
+                                "文件夹 · ${if (themeMode == AppThemeMode.DAY) "白天" else "黑夜"}"
+                            } else if (themeMode == AppThemeMode.DAY) {
+                                "白天模式"
+                            } else {
+                                "黑夜模式"
+                            },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
                 actions = {
+                    if (!inFolder) {
+                        IconButton(onClick = {
+                            folderNameInput = ""
+                            showCreateFolder = true
+                        }) {
+                            Icon(Icons.Default.CreateNewFolder, contentDescription = "新建文件夹")
+                        }
+                    }
                     IconButton(
                         onClick = { checkUpdate(manual = true) },
                         enabled = !checkingUpdate
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.SystemUpdate,
-                            contentDescription = "检查更新"
-                        )
+                        Icon(Icons.Default.SystemUpdate, contentDescription = "检查更新")
                     }
                     IconButton(onClick = viewModel::toggleTheme) {
                         Icon(
@@ -175,6 +219,7 @@ fun LibraryScreen(
                             arrayOf(
                                 "text/plain",
                                 "application/epub+zip",
+                                "application/pdf",
                                 "application/octet-stream",
                                 "*/*"
                             )
@@ -187,8 +232,12 @@ fun LibraryScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        if (books.isEmpty()) {
+        val showFolders = !inFolder && folders.isNotEmpty()
+        val empty = books.isEmpty() && !showFolders
+
+        if (empty) {
             EmptyLibrary(
+                inFolder = inFolder,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
@@ -201,36 +250,163 @@ fun LibraryScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(books, key = { it.id }) { book ->
+                if (!inFolder) {
+                    items(folders, key = { "f-${it.id}" }) { folder ->
+                        FolderRow(
+                            folder = folder,
+                            bookCount = viewModel.bookCountInFolder(folder.id, allBooks),
+                            onClick = { viewModel.openFolder(folder) },
+                            onDelete = { pendingDeleteFolder = folder }
+                        )
+                    }
+                }
+                items(books, key = { "b-${it.id}" }) { book ->
                     BookRow(
                         book = book,
                         onClick = { onOpenBook(book.id) },
-                        onLongClick = { pendingDelete = book }
+                        onMenu = { bookMenu = book }
                     )
                 }
             }
         }
     }
 
-    pendingDelete?.let { book ->
+    bookMenu?.let { book ->
         AlertDialog(
-            onDismissRequest = { pendingDelete = null },
+            onDismissRequest = { bookMenu = null },
+            title = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+            text = { Text("选择操作") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingMoveBook = book
+                        bookMenu = null
+                    }
+                ) { Text("移动到文件夹") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            pendingDeleteBook = book
+                            bookMenu = null
+                        }
+                    ) { Text("删除") }
+                    TextButton(onClick = { bookMenu = null }) { Text("取消") }
+                }
+            }
+        )
+    }
+
+    if (showCreateFolder) {
+        AlertDialog(
+            onDismissRequest = { showCreateFolder = false },
+            title = { Text("新建文件夹") },
+            text = {
+                OutlinedTextField(
+                    value = folderNameInput,
+                    onValueChange = { folderNameInput = it },
+                    singleLine = true,
+                    label = { Text("名称") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.createFolder(folderNameInput) { result ->
+                            result.onSuccess {
+                                showCreateFolder = false
+                                scope.launch { snackbarHostState.showSnackbar("已创建文件夹") }
+                            }.onFailure {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(it.message ?: "创建失败")
+                                }
+                            }
+                        }
+                    }
+                ) { Text("创建") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateFolder = false }) { Text("取消") }
+            }
+        )
+    }
+
+    pendingMoveBook?.let { book ->
+        AlertDialog(
+            onDismissRequest = { pendingMoveBook = null },
+            title = { Text("移动「${book.title}」") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        onClick = {
+                            viewModel.moveBook(book.id, null)
+                            pendingMoveBook = null
+                            scope.launch { snackbarHostState.showSnackbar("已移到根目录") }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("根目录（未分类）") }
+                    folders.forEach { folder ->
+                        TextButton(
+                            onClick = {
+                                viewModel.moveBook(book.id, folder.id)
+                                pendingMoveBook = null
+                                scope.launch { snackbarHostState.showSnackbar("已移到「${folder.name}」") }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text(folder.name) }
+                    }
+                    if (folders.isEmpty()) {
+                        Text(
+                            "还没有文件夹，先点顶栏新建一个吧",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { pendingMoveBook = null }) { Text("关闭") }
+            }
+        )
+    }
+
+    pendingDeleteBook?.let { book ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteBook = null },
             title = { Text("删除书籍") },
             text = { Text("确定删除「${book.title}」吗？") },
             confirmButton = {
                 TextButton(
                     onClick = {
                         viewModel.deleteBook(book)
-                        pendingDelete = null
+                        pendingDeleteBook = null
                     }
-                ) {
-                    Text("删除")
-                }
+                ) { Text("删除") }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) {
-                    Text("取消")
-                }
+                TextButton(onClick = { pendingDeleteBook = null }) { Text("取消") }
+            }
+        )
+    }
+
+    pendingDeleteFolder?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteFolder = null },
+            title = { Text("删除文件夹") },
+            text = { Text("删除「${folder.name}」后，其中的书会回到根目录，不会删除书籍。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteFolder(folder.id)
+                        pendingDeleteFolder = null
+                    }
+                ) { Text("删除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteFolder = null }) { Text("取消") }
             }
         )
     }
@@ -240,9 +416,7 @@ fun LibraryScreen(
             onDismissRequest = { updateInfo = null },
             title = { Text("发现新版本 v${info.versionName}") },
             text = {
-                Text(
-                    info.releaseNotes.ifBlank { "有可用更新，建议升级以获得更好阅读体验。" }
-                )
+                Text(info.releaseNotes.ifBlank { "有可用更新，建议升级。" })
             },
             confirmButton = {
                 TextButton(
@@ -250,21 +424,17 @@ fun LibraryScreen(
                         UpdateChecker.openDownload(context, info.apkUrl)
                         updateInfo = null
                     }
-                ) {
-                    Text("下载更新")
-                }
+                ) { Text("下载更新") }
             },
             dismissButton = {
-                TextButton(onClick = { updateInfo = null }) {
-                    Text("稍后")
-                }
+                TextButton(onClick = { updateInfo = null }) { Text("稍后") }
             }
         )
     }
 }
 
 @Composable
-private fun EmptyLibrary(modifier: Modifier = Modifier) {
+private fun EmptyLibrary(inFolder: Boolean, modifier: Modifier = Modifier) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
@@ -274,10 +444,17 @@ private fun EmptyLibrary(modifier: Modifier = Modifier) {
                 tint = MaterialTheme.colorScheme.primary
             )
             Spacer(Modifier.height(12.dp))
-            Text("书架空空如也", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (inFolder) "这个文件夹还是空的" else "书架空空如也",
+                style = MaterialTheme.typography.titleMedium
+            )
             Spacer(Modifier.height(4.dp))
             Text(
-                "点击右下角按钮导入 TXT / EPUB",
+                if (inFolder) {
+                    "点右下角导入书籍，或从根目录把书移进来"
+                } else {
+                    "点右下角导入 TXT / EPUB / PDF，也可新建文件夹分类"
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -287,17 +464,73 @@ private fun EmptyLibrary(modifier: Modifier = Modifier) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun BookRow(
-    book: BookEntity,
+private fun FolderRow(
+    folder: FolderEntity,
+    bookCount: Int,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onDelete: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f))
+            .combinedClickable(onClick = onClick, onLongClick = onDelete)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.secondary),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Folder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondary
+            )
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = folder.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "$bookCount 本书",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Default.Delete, contentDescription = "删除文件夹")
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BookRow(
+    book: BookEntity,
+    onClick: () -> Unit,
+    onMenu: () -> Unit
+) {
+    val icon: ImageVector = if (book.format.equals("PDF", ignoreCase = true)) {
+        Icons.Default.PictureAsPdf
+    } else {
+        Icons.AutoMirrored.Filled.MenuBook
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(onClick = onClick, onLongClick = onMenu)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -309,7 +542,7 @@ private fun BookRow(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                imageVector = icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onPrimary
             )
@@ -336,8 +569,8 @@ private fun BookRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        IconButton(onClick = onLongClick) {
-            Icon(Icons.Default.Delete, contentDescription = "删除")
+        IconButton(onClick = onMenu) {
+            Icon(Icons.Default.MoreVert, contentDescription = "更多")
         }
     }
 }
@@ -345,5 +578,9 @@ private fun BookRow(
 private fun progressLabel(book: BookEntity): String {
     if (book.lastReadAt == 0L) return "未开始阅读"
     val df = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
-    return "读到第 ${book.chapterIndex + 1} 章 · ${df.format(Date(book.lastReadAt))}"
+    return if (book.format.equals("PDF", ignoreCase = true)) {
+        "读到第 ${book.chapterIndex + 1} 页 · ${df.format(Date(book.lastReadAt))}"
+    } else {
+        "读到第 ${book.chapterIndex + 1} 章 · ${df.format(Date(book.lastReadAt))}"
+    }
 }

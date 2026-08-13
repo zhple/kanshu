@@ -10,7 +10,8 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 enum class BookFormat(val extension: String) {
     TXT(".txt"),
-    EPUB(".epub");
+    EPUB(".epub"),
+    PDF(".pdf");
 
     companion object {
         fun fromFileName(name: String): BookFormat? {
@@ -45,6 +46,12 @@ object BookParser {
                 title = fallbackTitle.removeSuffix(".txt").removeSuffix(".TXT"),
                 author = "未知作者"
             )
+            BookFormat.PDF -> BookMetadata(
+                title = fallbackTitle
+                    .removeSuffix(".pdf")
+                    .removeSuffix(".PDF"),
+                author = "PDF"
+            )
             BookFormat.EPUB -> {
                 val parsed = parseEpub(file)
                 BookMetadata(
@@ -60,6 +67,7 @@ object BookParser {
     fun parse(file: File, format: BookFormat, fallbackTitle: String): ParsedBook {
         return when (format) {
             BookFormat.TXT -> parseTxt(file, fallbackTitle)
+            BookFormat.PDF -> error("PDF 请使用专用阅读器打开")
             BookFormat.EPUB -> {
                 val parsed = parseEpub(file)
                 parsed.copy(

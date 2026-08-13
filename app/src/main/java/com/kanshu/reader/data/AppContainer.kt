@@ -11,6 +11,7 @@ class AppContainer(context: Context) {
 
     val bookRepository = BookRepository(
         bookDao = database.bookDao(),
+        folderDao = database.folderDao(),
         filesDir = appContext.filesDir
     )
     val themePreferences = ThemePreferences(appContext)
