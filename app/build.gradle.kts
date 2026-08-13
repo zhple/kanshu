@@ -13,8 +13,8 @@ android {
         applicationId = "com.kanshu.reader"
         minSdk = 24
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.3.1"
+        versionCode = 7
+        versionName = "1.4.0"
 
         // 自动更新：指向 GitHub Releases latest API
         buildConfigField(
@@ -33,6 +33,9 @@ android {
             "DEFAULT_BOOKS_BASE_URL",
             "\"https://raw.githubusercontent.com/zhple/kanshu/main/default-books\""
         )
+        buildConfigField("String", "GITHUB_OWNER", "\"zhple\"")
+        buildConfigField("String", "GITHUB_REPO", "\"kanshu\"")
+        buildConfigField("String", "GITHUB_BRANCH", "\"main\"")
     }
 
     buildTypes {

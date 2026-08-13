@@ -16,6 +16,7 @@ enum class AppThemeMode {
 
 class ThemePreferences(private val context: Context) {
     private val themeKey = stringPreferencesKey("theme_mode")
+    private val githubTokenKey = stringPreferencesKey("github_token")
 
     val themeMode: Flow<AppThemeMode> = context.dataStore.data.map { prefs ->
         when (prefs[themeKey]) {
@@ -24,9 +25,25 @@ class ThemePreferences(private val context: Context) {
         }
     }
 
+    val githubToken: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[githubTokenKey].orEmpty()
+    }
+
     suspend fun setThemeMode(mode: AppThemeMode) {
         context.dataStore.edit { prefs ->
             prefs[themeKey] = mode.name
+        }
+    }
+
+    suspend fun setGithubToken(token: String) {
+        context.dataStore.edit { prefs ->
+            prefs[githubTokenKey] = token.trim()
+        }
+    }
+
+    suspend fun clearGithubToken() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(githubTokenKey)
         }
     }
 }

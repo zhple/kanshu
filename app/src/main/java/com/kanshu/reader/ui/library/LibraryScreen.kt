@@ -23,11 +23,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
@@ -35,8 +37,10 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -64,6 +68,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -93,6 +99,8 @@ fun LibraryScreen(
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val sourceFilter by viewModel.sourceFilter.collectAsStateWithLifecycle()
     val syncMessage by viewModel.syncMessage.collectAsStateWithLifecycle()
+    val uploading by viewModel.uploading.collectAsStateWithLifecycle()
+    val hasGithubToken by viewModel.hasGithubToken.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val app = context.applicationContext as KanshuApp
     val snackbarHostState = remember { SnackbarHostState() }
@@ -107,6 +115,9 @@ fun LibraryScreen(
     var pendingDeleteFolder by remember { mutableStateOf<FolderEntity?>(null) }
     var pendingMoveBook by remember { mutableStateOf<BookEntity?>(null) }
     var bookMenu by remember { mutableStateOf<BookEntity?>(null) }
+    var showTokenDialog by remember { mutableStateOf(false) }
+    var tokenInput by remember { mutableStateOf("") }
+    var pendingUploadBook by remember { mutableStateOf<BookEntity?>(null) }
 
     val inFolder = currentFolderId != null
 
@@ -145,7 +156,6 @@ fun LibraryScreen(
     fun checkUpdate(manual: Boolean) {
         scope.launch {
             checkingUpdate = true
-            // 更新检查时同时同步仓库默认书
             viewModel.syncDefaultBooks(manual = true)
             val result = UpdateChecker.check()
             checkingUpdate = false
@@ -163,6 +173,18 @@ fun LibraryScreen(
                 }
             }
         }
+    }
+
+    fun requestUpload(book: BookEntity) {
+        if (!hasGithubToken) {
+            pendingUploadBook = book
+            tokenInput = ""
+            showTokenDialog = true
+            bookMenu = null
+            return
+        }
+        bookMenu = null
+        viewModel.uploadBookToRemote(book)
     }
 
     Scaffold(
@@ -195,6 +217,12 @@ fun LibraryScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        tokenInput = ""
+                        showTokenDialog = true
+                    }) {
+                        Icon(Icons.Default.Settings, contentDescription = "仓库上传设置")
+                    }
                     if (!inFolder) {
                         IconButton(onClick = {
                             folderNameInput = ""
@@ -252,62 +280,79 @@ fun LibraryScreen(
         val showFolders = !inFolder && folders.isNotEmpty() && sourceFilter != BookSourceFilter.LOCAL
         val empty = books.isEmpty() && !showFolders
 
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = sourceFilter == BookSourceFilter.ALL,
-                    onClick = { viewModel.setSourceFilter(BookSourceFilter.ALL) },
-                    label = { Text("全部") }
-                )
-                FilterChip(
-                    selected = sourceFilter == BookSourceFilter.REMOTE,
-                    onClick = { viewModel.setSourceFilter(BookSourceFilter.REMOTE) },
-                    label = { Text("仓库书") }
-                )
-                FilterChip(
-                    selected = sourceFilter == BookSourceFilter.LOCAL,
-                    onClick = { viewModel.setSourceFilter(BookSourceFilter.LOCAL) },
-                    label = { Text("我的上传") }
-                )
-            }
-
-            if (empty) {
-                EmptyLibrary(
-                    inFolder = inFolder,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (!inFolder && sourceFilter != BookSourceFilter.LOCAL) {
-                        items(folders, key = { "f-${it.id}" }) { folder ->
-                            FolderRow(
-                                folder = folder,
-                                bookCount = viewModel.bookCountInFolder(folder.id, allBooks),
-                                onClick = { viewModel.openFolder(folder) },
-                                onDelete = { pendingDeleteFolder = folder }
+                    FilterChip(
+                        selected = sourceFilter == BookSourceFilter.ALL,
+                        onClick = { viewModel.setSourceFilter(BookSourceFilter.ALL) },
+                        label = { Text("全部") }
+                    )
+                    FilterChip(
+                        selected = sourceFilter == BookSourceFilter.REMOTE,
+                        onClick = { viewModel.setSourceFilter(BookSourceFilter.REMOTE) },
+                        label = { Text("仓库书") }
+                    )
+                    FilterChip(
+                        selected = sourceFilter == BookSourceFilter.LOCAL,
+                        onClick = { viewModel.setSourceFilter(BookSourceFilter.LOCAL) },
+                        label = { Text("我的上传") }
+                    )
+                }
+
+                if (empty) {
+                    EmptyLibrary(
+                        inFolder = inFolder,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (!inFolder && sourceFilter != BookSourceFilter.LOCAL) {
+                            items(folders, key = { "f-${it.id}" }) { folder ->
+                                FolderRow(
+                                    folder = folder,
+                                    bookCount = viewModel.bookCountInFolder(folder.id, allBooks),
+                                    onClick = { viewModel.openFolder(folder) },
+                                    onDelete = { pendingDeleteFolder = folder }
+                                )
+                            }
+                        }
+                        items(books, key = { "b-${it.id}" }) { book ->
+                            BookRow(
+                                book = book,
+                                onClick = { onOpenBook(book.id) },
+                                onMenu = { bookMenu = book }
                             )
                         }
                     }
-                    items(books, key = { "b-${it.id}" }) { book ->
-                        BookRow(
-                            book = book,
-                            onClick = { onOpenBook(book.id) },
-                            onMenu = { bookMenu = book }
-                        )
+                }
+            }
+
+            if (uploading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator()
+                        Spacer(Modifier.height(12.dp))
+                        Text("正在上传到 GitHub…", color = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
             }
@@ -319,9 +364,23 @@ fun LibraryScreen(
             onDismissRequest = { bookMenu = null },
             title = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
             text = {
-                Text(
-                    if (book.isRemote) "仓库默认书 · 可移动或删除本地副本" else "本地上传 · 选择操作"
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (book.isRemote) {
+                            "仓库书 · 可再次上传覆盖，或移动/删除本地副本"
+                        } else {
+                            "本地书 · 可上传到远程仓库供同步"
+                        }
+                    )
+                    TextButton(
+                        onClick = { requestUpload(book) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CloudUpload, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (book.isRemote) "重新上传到仓库" else "上传到远程仓库")
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
@@ -329,7 +388,7 @@ fun LibraryScreen(
                         pendingMoveBook = book
                         bookMenu = null
                     }
-                ) { Text("移动到文件夹") }
+                ) { Text("移动") }
             },
             dismissButton = {
                 Row {
@@ -340,6 +399,77 @@ fun LibraryScreen(
                         }
                     ) { Text("删除") }
                     TextButton(onClick = { bookMenu = null }) { Text("取消") }
+                }
+            }
+        )
+    }
+
+    if (showTokenDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showTokenDialog = false
+                pendingUploadBook = null
+            },
+            title = { Text("GitHub 上传设置") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "填写具有 Contents 写权限的 Personal Access Token，用于把本地书推到 zhple/kanshu 的 default-books。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "当前状态：${if (hasGithubToken) "已配置 Token" else "未配置"}",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    OutlinedTextField(
+                        value = tokenInput,
+                        onValueChange = { tokenInput = it },
+                        singleLine = true,
+                        label = { Text("GitHub Token") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.saveGithubToken(tokenInput) { result ->
+                            result.onSuccess {
+                                showTokenDialog = false
+                                val book = pendingUploadBook
+                                pendingUploadBook = null
+                                scope.launch { snackbarHostState.showSnackbar("Token 已保存") }
+                                if (book != null) {
+                                    viewModel.uploadBookToRemote(book)
+                                }
+                            }.onFailure {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(it.message ?: "保存失败")
+                                }
+                            }
+                        }
+                    }
+                ) { Text("保存") }
+            },
+            dismissButton = {
+                Row {
+                    if (hasGithubToken) {
+                        TextButton(
+                            onClick = {
+                                viewModel.clearGithubToken()
+                                scope.launch { snackbarHostState.showSnackbar("已清除 Token") }
+                            }
+                        ) { Text("清除") }
+                    }
+                    TextButton(
+                        onClick = {
+                            showTokenDialog = false
+                            pendingUploadBook = null
+                        }
+                    ) { Text("取消") }
                 }
             }
         )
@@ -403,13 +533,6 @@ fun LibraryScreen(
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text(folder.name) }
-                    }
-                    if (folders.isEmpty()) {
-                        Text(
-                            "还没有文件夹，先点顶栏新建一个吧",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             },
@@ -508,7 +631,7 @@ private fun EmptyLibrary(inFolder: Boolean, modifier: Modifier = Modifier) {
                 if (inFolder) {
                     "点右下角导入书籍，或从根目录把书移进来"
                 } else {
-                    "仓库书会自动同步；也可本地上传 TXT / EPUB / PDF"
+                    "可同步仓库书，也可本地导入后上传到远程仓库"
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

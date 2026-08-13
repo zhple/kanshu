@@ -122,6 +122,16 @@ class BookRepository(
         bookDao.delete(book.id)
     }
 
+    suspend fun markAsRemote(bookId: Long, remoteId: String, folderId: Long?) =
+        withContext(Dispatchers.IO) {
+            bookDao.markRemote(
+                bookId = bookId,
+                remoteId = remoteId,
+                folderId = folderId,
+                source = BookEntity.SOURCE_REMOTE
+            )
+        }
+
     suspend fun updateProgress(id: Long, chapterIndex: Int, scrollOffset: Int) {
         bookDao.updateProgress(id, chapterIndex, scrollOffset)
     }

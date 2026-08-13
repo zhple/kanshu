@@ -57,6 +57,17 @@ interface BookDao {
     @Query("DELETE FROM books WHERE id = :id")
     suspend fun delete(id: Long)
 
+    @Query(
+        """
+        UPDATE books
+        SET source = :source,
+            remoteId = :remoteId,
+            folderId = :folderId
+        WHERE id = :bookId
+        """
+    )
+    suspend fun markRemote(bookId: Long, remoteId: String, folderId: Long?, source: String)
+
     @Query("SELECT COUNT(*) FROM books WHERE folderId = :folderId")
     suspend fun countInFolder(folderId: Long): Int
 }
