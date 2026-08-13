@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "books": [
     {
       "id": "dianqi-maxituan",
@@ -48,6 +48,13 @@
       "title": "献给阿尔吉侬的花束",
       "author": "未知作者",
       "file": "user-de7f8b8c4b.txt",
+      "format": "TXT"
+    },
+    {
+      "id": "user-3584265174",
+      "title": "cross channel",
+      "author": "未知作者",
+      "file": "user-3584265174.txt",
       "format": "TXT"
     }
   ]
