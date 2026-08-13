@@ -11,8 +11,8 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
- * 硅基流动文生图（FLUX.2 [pro]）。
- * seed 参与采样；不同会话/消息必须传入不同 seed，否则易撞图。
+ * 硅基流动文生图。
+ * 国内站当前可用高质量档：FLUX-1.1-pro（FLUX.2-pro 多数账号未上架会报 Model does not exist）。
  */
 class SceneImageClient(
     private val apiKeyProvider: suspend () -> String
@@ -41,7 +41,6 @@ class SceneImageClient(
         if (dest.exists()) dest.delete()
 
         val size = pickImageSize(width, height)
-        // FLUX.2-pro 无独立 negative_prompt 字段，并入正文避免
         val fullPrompt = buildString {
             append(prompt.trim().take(1800))
             if (negative.isNotBlank()) {
@@ -49,12 +48,47 @@ class SceneImageClient(
                 append(negative.trim().take(400))
             }
         }
+
+        // 优先高质量；若账号未开通则回退到稳定可用的 FLUX.1-dev
+        val models = listOf(MODEL_PRIMARY, MODEL_FALLBACK)
+        var lastError: String? = null
+        for (model in models) {
+            val result = runCatching {
+                requestGenerate(
+                    apiKey = apiKey,
+                    model = model,
+                    prompt = fullPrompt,
+                    size = size,
+                    seed = seed,
+                    dest = dest
+                )
+            }
+            if (result.isSuccess) return@withContext dest
+            lastError = result.exceptionOrNull()?.message
+            val msg = lastError.orEmpty()
+            val modelMissing = msg.contains("20012") ||
+                msg.contains("does not exist", ignoreCase = true) ||
+                msg.contains("Model does not exist", ignoreCase = true)
+            if (!modelMissing) {
+                error(lastError ?: "生图失败")
+            }
+        }
+        error(lastError ?: "生图失败：当前账号无可用生图模型")
+    }
+
+    private fun requestGenerate(
+        apiKey: String,
+        model: String,
+        prompt: String,
+        size: String,
+        seed: Long,
+        dest: File
+    ) {
         val body = JSONObject()
-            .put("model", MODEL)
-            .put("prompt", fullPrompt)
+            .put("model", model)
+            .put("prompt", prompt)
             .put("image_size", size)
             .put("seed", seed.coerceIn(0, 9_999_999_999L))
-            .put("output_format", "jpeg")
             .toString()
             .toRequestBody(jsonMedia)
 
@@ -78,7 +112,6 @@ class SceneImageClient(
             require(url.isNotBlank()) { "生图返回缺少图片地址" }
             download(url, dest)
         }
-        dest
     }
 
     private fun download(url: String, dest: File) {
@@ -103,15 +136,19 @@ class SceneImageClient(
     }
 
     private fun friendlyHttpError(code: Int, body: String): String {
-        return when (code) {
-            401, 403 -> "硅基流动 API Key 无效或无权限"
-            429 -> "生图请求过于频繁，请稍后再试"
+        return when {
+            code == 401 || code == 403 -> "硅基流动 API Key 无效或无权限"
+            code == 429 -> "生图请求过于频繁，请稍后再试"
+            body.contains("20012") || body.contains("does not exist", ignoreCase = true) ->
+                "生图模型不可用（$body）"
             else -> "硅基流动生图失败 HTTP $code: $body"
         }
     }
 
     companion object {
         const val BASE_URL = "https://api.siliconflow.cn/v1"
-        const val MODEL = "black-forest-labs/FLUX.2-pro"
+        /** 国内文档列出的高质量档（比 FLUX.1-dev 更好） */
+        const val MODEL_PRIMARY = "black-forest-labs/FLUX-1.1-pro"
+        const val MODEL_FALLBACK = "black-forest-labs/FLUX.1-dev"
     }
 }

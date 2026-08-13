@@ -82,7 +82,7 @@ class MinimaxTtsClient(
             val code = base?.optInt("status_code", 0) ?: 0
             if (code != 0) {
                 val msg = base?.optString("status_msg").orEmpty().ifBlank { "合成失败" }
-                error("MiniMax 语音失败：$msg（$code）")
+                error(mapApiError(code, msg))
             }
             val audioHex = json.optJSONObject("data")?.optString("audio").orEmpty()
             require(audioHex.isNotBlank()) { "语音返回为空，请换个声线或稍后重试" }
@@ -122,10 +122,22 @@ class MinimaxTtsClient(
         }
 
         private fun friendlyHttpError(code: Int, body: String): String {
-            return when (code) {
-                401, 403 -> "MiniMax API Key 无效或无权限，请检查后重试"
-                429 -> "语音请求过于频繁，请稍后再试"
+            return when {
+                code == 401 || code == 403 -> "MiniMax API Key 无效或无权限，请检查后重试"
+                code == 429 -> "语音请求过于频繁，请稍后再试"
+                body.contains("1008") || body.contains("insufficient balance", ignoreCase = true) ->
+                    "MiniMax 余额不足，请到平台充值后再试"
                 else -> "MiniMax 请求失败 HTTP $code: $body"
+            }
+        }
+
+        private fun mapApiError(code: Int, msg: String): String {
+            return when {
+                code == 1008 || msg.contains("insufficient balance", ignoreCase = true) ->
+                    "MiniMax 余额不足，请到平台充值后再试"
+                code == 1004 -> "MiniMax API Key 无效，请重新填写"
+                code == 1002 -> "MiniMax 触发限流，请稍后再试"
+                else -> "MiniMax 语音失败：$msg（$code）"
             }
         }
     }

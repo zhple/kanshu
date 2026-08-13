@@ -108,7 +108,7 @@ class AiChatRepository(
     }
 
     /**
-     * 为某条 assistant 消息生成场景配图（硅基流动 FLUX.2-pro + 会话/消息级 seed + Visual DNA）。
+     * 为某条 assistant 消息生成场景配图（硅基流动 FLUX-1.1-pro，不可用则回退 FLUX.1-dev）。
      * @param force 为 true 时覆盖已有配图
      */
     suspend fun generateSceneImage(
