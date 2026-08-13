@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.random.Random
 
 class AiChatRepository(
     private val context: Context,
@@ -19,7 +20,9 @@ class AiChatRepository(
     private val client = DeepSeekClient(
         apiKeyProvider = { themePreferences.deepseekApiKey.first() }
     )
-    private val imageClient = SceneImageClient()
+    private val imageClient = SceneImageClient(
+        apiKeyProvider = { themePreferences.siliconflowApiKey.first() }
+    )
 
     fun observeSessions(): Flow<List<AiSessionEntity>> = aiChatDao.observeSessions()
 
@@ -59,77 +62,113 @@ class AiChatRepository(
                 systemPrompt = merged
             )
         }.getOrNull()
-        aiChatDao.insertSession(
+        val preferred = dna?.seed?.takeIf { it > 0 } ?: Random.nextLong(100_000, 999_999_999)
+        // 先占位插入拿 sessionId，再用 sessionId 混种，避免不同会话共用同一 seed
+        val id = aiChatDao.insertSession(
             AiSessionEntity(
                 title = title.trim().ifBlank { "未命名角色聊天" },
                 systemPrompt = merged,
                 openingHint = openingHint.trim(),
                 visualDnaJson = dna?.toJson().orEmpty(),
-                imageSeed = dna?.seed ?: 0L
+                imageSeed = 0L
             )
         )
+        val sessionSeed = ImageSeeds.sessionBase(id, preferred)
+        val dnaJson = dna?.copy(seed = sessionSeed)?.toJson().orEmpty()
+        aiChatDao.updateVisualDna(id, dnaJson, sessionSeed)
+        id
     }
 
     suspend fun ensureVisualDna(sessionId: Long): VisualDna = withContext(Dispatchers.IO) {
         val session = aiChatDao.getSession(sessionId) ?: error("会话不存在")
         if (session.visualDnaJson.isNotBlank()) {
-            return@withContext VisualDna.parse(session.visualDnaJson).let { parsed ->
-                if (session.imageSeed > 0 && parsed.seed != session.imageSeed) {
-                    parsed.copy(seed = session.imageSeed)
-                } else {
-                    parsed
-                }
+            val parsed = VisualDna.parse(session.visualDnaJson)
+            val seed = when {
+                session.imageSeed > 0 -> ImageSeeds.sessionBase(sessionId, session.imageSeed)
+                else -> ImageSeeds.sessionBase(sessionId, parsed.seed)
             }
+            if (session.imageSeed != seed || parsed.seed != seed) {
+                val fixed = parsed.copy(seed = seed)
+                aiChatDao.updateVisualDna(sessionId, fixed.toJson(), seed)
+                return@withContext fixed
+            }
+            return@withContext parsed.copy(seed = seed)
         }
         val dna = client.generateVisualDna(
             dnaSystem = readAsset("ai/roleplay_visual_dna.txt"),
             systemPrompt = session.systemPrompt
         )
-        aiChatDao.updateVisualDna(sessionId, dna.toJson(), dna.seed)
-        dna
+        val seed = ImageSeeds.sessionBase(sessionId, dna.seed)
+        val fixed = dna.copy(seed = seed)
+        aiChatDao.updateVisualDna(sessionId, fixed.toJson(), seed)
+        fixed
     }
 
     /**
-     * 为某条 assistant 消息生成场景配图（免费 Pollinations + 固定 seed + Visual DNA）。
-     * @return 本地图片路径
+     * 为某条 assistant 消息生成场景配图（硅基流动 FLUX.1-dev + 会话/消息级 seed + Visual DNA）。
+     * @param force 为 true 时覆盖已有配图
      */
-    suspend fun generateSceneImage(sessionId: Long, messageId: Long): String =
-        withContext(Dispatchers.IO) {
-            val message = aiChatDao.getMessage(messageId) ?: error("消息不存在")
-            require(message.sessionId == sessionId) { "消息不属于该会话" }
-            require(message.role == "assistant") { "只能为 AI 回复配图" }
-            if (message.imagePath.isNotBlank() && File(message.imagePath).exists()) {
-                return@withContext message.imagePath
-            }
-
-            val dna = ensureVisualDna(sessionId)
-            val recent = aiChatDao.listMessages(sessionId)
-                .filter { it.role == "user" || it.role == "assistant" }
-                .takeLast(6)
-                .joinToString("\n") { "${it.role}: ${it.content.take(400)}" }
-
-            val spec = client.buildSceneImagePrompt(
-                sceneSystem = readAsset("ai/roleplay_scene_image.txt"),
-                dna = dna,
-                recentDialogue = recent
-            )
-
-            val dest = File(
-                context.filesDir,
-                "ai_images/s${sessionId}_m${messageId}.jpg"
-            )
-            imageClient.generateToFile(
-                prompt = spec.prompt,
-                negative = dna.negative,
-                seed = dna.seed,
-                width = spec.width,
-                height = spec.height,
-                dest = dest
-            )
-            aiChatDao.updateMessageImage(messageId, dest.absolutePath, spec.prompt)
-            aiChatDao.touchSession(sessionId)
-            dest.absolutePath
+    suspend fun generateSceneImage(
+        sessionId: Long,
+        messageId: Long,
+        force: Boolean = false
+    ): String = withContext(Dispatchers.IO) {
+        val message = aiChatDao.getMessage(messageId) ?: error("消息不存在")
+        require(message.sessionId == sessionId) { "消息不属于该会话" }
+        require(message.role == "assistant") { "只能为 AI 回复配图" }
+        if (!force && message.imagePath.isNotBlank() && File(message.imagePath).exists()) {
+            return@withContext message.imagePath
         }
+
+        val dna = ensureVisualDna(sessionId)
+        val focus = message.content.trim().take(900)
+        val recent = aiChatDao.listMessages(sessionId)
+            .filter { it.role == "user" || it.role == "assistant" }
+            .takeLast(4)
+            .joinToString("\n") { "${it.role}: ${it.content.take(280)}" }
+
+        val dialogueBlock = buildString {
+            appendLine("【本条要画的画面（唯一焦点，messageId=$messageId）】")
+            appendLine(focus.ifBlank { "开场画面" })
+            appendLine()
+            appendLine("【前后文】")
+            appendLine(recent)
+            appendLine()
+            appendLine("请画出与本条焦点明显对应的独特构图，不要复用其它对话的默认站姿空镜。")
+        }
+
+        val spec = client.buildSceneImagePrompt(
+            sceneSystem = readAsset("ai/roleplay_scene_image.txt"),
+            dna = dna,
+            recentDialogue = dialogueBlock
+        )
+
+        val promptFingerprint = (spec.prompt + "|m$messageId|s$sessionId").hashCode()
+        val seedBase = ImageSeeds.forMessage(dna.seed, messageId, promptFingerprint)
+        val seed = if (force) {
+            ImageSeeds.forMessage(seedBase, messageId, Random.nextInt())
+        } else {
+            seedBase
+        }
+
+        val dest = File(
+            context.filesDir,
+            "ai_images/s${sessionId}_m${messageId}.jpg"
+        )
+        if (dest.exists()) dest.delete()
+
+        imageClient.generateToFile(
+            prompt = spec.prompt,
+            negative = dna.negative,
+            seed = seed,
+            width = spec.width,
+            height = spec.height,
+            dest = dest
+        )
+        aiChatDao.updateMessageImage(messageId, dest.absolutePath, spec.prompt)
+        aiChatDao.touchSession(sessionId)
+        dest.absolutePath
+    }
 
     suspend fun listChatMessages(sessionId: Long): List<ChatMessage> =
         withContext(Dispatchers.IO) {

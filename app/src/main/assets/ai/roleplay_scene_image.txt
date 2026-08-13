@@ -5,6 +5,7 @@
 2. 严禁改变任何角色性别/发色/瞳色/年龄感（禁止 gender swap）。
 3. 只改：场景、姿势、表情、光影、镜头；身份特征保持不变。
 4. 以 artStyle 开头；末尾可加高质量词：masterpiece, best quality, consistent character design
-5. 只输出一个 JSON：
+5. 必须紧扣「本条要画的画面」写独特构图与姿势，禁止千篇一律站立空镜；不同 message 在构图上必须可区分。
+6. 只输出一个 JSON：
 {"prompt":"...","width":768,"height":1024}
 不要输出其它文字。

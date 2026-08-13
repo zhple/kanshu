@@ -18,6 +18,7 @@ class ThemePreferences(private val context: Context) {
     private val themeKey = stringPreferencesKey("theme_mode")
     private val githubTokenKey = stringPreferencesKey("github_token")
     private val deepseekApiKeyKey = stringPreferencesKey("deepseek_api_key")
+    private val siliconflowApiKeyKey = stringPreferencesKey("siliconflow_api_key")
 
     val themeMode: Flow<AppThemeMode> = context.dataStore.data.map { prefs ->
         when (prefs[themeKey]) {
@@ -32,6 +33,10 @@ class ThemePreferences(private val context: Context) {
 
     val deepseekApiKey: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[deepseekApiKeyKey].orEmpty()
+    }
+
+    val siliconflowApiKey: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[siliconflowApiKeyKey].orEmpty()
     }
 
     suspend fun setThemeMode(mode: AppThemeMode) {
@@ -61,6 +66,18 @@ class ThemePreferences(private val context: Context) {
     suspend fun clearDeepseekApiKey() {
         context.dataStore.edit { prefs ->
             prefs.remove(deepseekApiKeyKey)
+        }
+    }
+
+    suspend fun setSiliconflowApiKey(key: String) {
+        context.dataStore.edit { prefs ->
+            prefs[siliconflowApiKeyKey] = key.trim()
+        }
+    }
+
+    suspend fun clearSiliconflowApiKey() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(siliconflowApiKeyKey)
         }
     }
 }

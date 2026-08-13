@@ -8,9 +8,14 @@ import com.kanshu.reader.data.db.AiSessionEntity
 import com.kanshu.reader.data.prefs.ThemePreferences
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+data class AiKeysStatus(
+    val hasDeepseek: Boolean = false,
+    val hasSiliconflow: Boolean = false
+)
 
 class AiSessionsViewModel(
     private val aiChatRepository: AiChatRepository,
@@ -19,23 +24,43 @@ class AiSessionsViewModel(
     val sessions: StateFlow<List<AiSessionEntity>> = aiChatRepository.observeSessions()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val hasApiKey: StateFlow<Boolean> = themePreferences.deepseekApiKey
-        .map { it.isNotBlank() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val keysStatus: StateFlow<AiKeysStatus> = combine(
+        themePreferences.deepseekApiKey,
+        themePreferences.siliconflowApiKey
+    ) { deepseek, silicon ->
+        AiKeysStatus(
+            hasDeepseek = deepseek.isNotBlank(),
+            hasSiliconflow = silicon.isNotBlank()
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiKeysStatus())
 
-    fun saveApiKey(key: String, onDone: (Result<Unit>) -> Unit = {}) {
+    fun saveKeys(
+        deepseekKey: String?,
+        siliconflowKey: String?,
+        onDone: (Result<Unit>) -> Unit = {}
+    ) {
         viewModelScope.launch {
             onDone(
                 runCatching {
-                    require(key.trim().isNotEmpty()) { "API Key 不能为空" }
-                    themePreferences.setDeepseekApiKey(key)
+                    if (deepseekKey != null) {
+                        require(deepseekKey.trim().isNotEmpty()) { "DeepSeek API Key 不能为空" }
+                        themePreferences.setDeepseekApiKey(deepseekKey)
+                    }
+                    if (siliconflowKey != null) {
+                        require(siliconflowKey.trim().isNotEmpty()) { "硅基流动 API Key 不能为空" }
+                        themePreferences.setSiliconflowApiKey(siliconflowKey)
+                    }
                 }
             )
         }
     }
 
-    fun clearApiKey() {
+    fun clearDeepseekApiKey() {
         viewModelScope.launch { themePreferences.clearDeepseekApiKey() }
+    }
+
+    fun clearSiliconflowApiKey() {
+        viewModelScope.launch { themePreferences.clearSiliconflowApiKey() }
     }
 
     fun deleteSession(id: Long) {

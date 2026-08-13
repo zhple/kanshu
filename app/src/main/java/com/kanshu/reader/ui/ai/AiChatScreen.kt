@@ -43,10 +43,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.kanshu.reader.data.db.AiMessageEntity
 import java.io.File
 
@@ -137,7 +139,9 @@ fun AiChatScreen(
                                     msg.content.isNotBlank() &&
                                     !state.streaming &&
                                     state.generatingImageFor == null,
-                                onGenerateImage = { viewModel.generateSceneImage(msg.id) }
+                                onGenerateImage = { force ->
+                                    viewModel.generateSceneImage(msg.id, force = force)
+                                }
                             )
                         }
                     }
@@ -207,7 +211,7 @@ private fun MessageBubble(
     message: AiMessageEntity,
     generatingImage: Boolean,
     canGenerateImage: Boolean,
-    onGenerateImage: () -> Unit
+    onGenerateImage: (force: Boolean) -> Unit
 ) {
     val mine = message.role == "user"
     val hasImage = message.imagePath.isNotBlank() && File(message.imagePath).exists()
@@ -243,8 +247,14 @@ private fun MessageBubble(
         if (!mine && message.id > 0) {
             if (hasImage) {
                 Spacer(Modifier.height(6.dp))
+                val ctx = LocalContext.current
+                val file = File(message.imagePath)
                 AsyncImage(
-                    model = File(message.imagePath),
+                    model = ImageRequest.Builder(ctx)
+                        .data(file)
+                        .memoryCacheKey("${message.imagePath}-${file.lastModified()}")
+                        .diskCacheKey("${message.imagePath}-${file.lastModified()}")
+                        .build(),
                     contentDescription = "场景图",
                     modifier = Modifier
                         .widthIn(max = 280.dp)
@@ -252,6 +262,13 @@ private fun MessageBubble(
                         .clip(RoundedCornerShape(12.dp)),
                     contentScale = ContentScale.Crop
                 )
+                TextButton(
+                    onClick = { onGenerateImage(true) },
+                    enabled = canGenerateImage && !generatingImage,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                ) {
+                    Text(if (generatingImage) "重新生成中…" else "重新生成")
+                }
             } else if (generatingImage) {
                 Row(
                     modifier = Modifier.padding(top = 4.dp),
@@ -267,7 +284,7 @@ private fun MessageBubble(
                 }
             } else if (canGenerateImage) {
                 TextButton(
-                    onClick = onGenerateImage,
+                    onClick = { onGenerateImage(false) },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                 ) {
                     Icon(

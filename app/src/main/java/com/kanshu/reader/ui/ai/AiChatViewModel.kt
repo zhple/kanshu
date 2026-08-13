@@ -71,14 +71,13 @@ class AiChatViewModel(
         }
     }
 
-    fun generateSceneImage(messageId: Long) {
+    fun generateSceneImage(messageId: Long, force: Boolean = false) {
         if (_uiState.value.generatingImageFor != null || _uiState.value.streaming) return
         if (messageId <= 0) return
         viewModelScope.launch {
             _uiState.update { it.copy(generatingImageFor = messageId, error = null) }
             runCatching {
-                aiChatRepository.generateSceneImage(sessionId, messageId)
-                // 刷新 session（可能刚写入 Visual DNA）
+                aiChatRepository.generateSceneImage(sessionId, messageId, force = force)
                 aiChatRepository.getSession(sessionId)?.let { s ->
                     _uiState.update { it.copy(session = s) }
                 }

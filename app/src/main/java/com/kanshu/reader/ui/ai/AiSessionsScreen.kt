@@ -61,12 +61,19 @@ fun AiSessionsScreen(
     onOpenSession: (Long) -> Unit
 ) {
     val sessions by viewModel.sessions.collectAsStateWithLifecycle()
-    val hasApiKey by viewModel.hasApiKey.collectAsStateWithLifecycle()
+    val keys by viewModel.keysStatus.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showKeyDialog by remember { mutableStateOf(false) }
-    var keyInput by remember { mutableStateOf("") }
+    var deepseekInput by remember { mutableStateOf("") }
+    var siliconInput by remember { mutableStateOf("") }
     var pendingDelete by remember { mutableStateOf<AiSessionEntity?>(null) }
+
+    val statusText = buildString {
+        append(if (keys.hasDeepseek) "DeepSeek✓" else "DeepSeek未配")
+        append(" · ")
+        append(if (keys.hasSiliconflow) "生图✓" else "生图未配")
+    }
 
     Scaffold(
         topBar = {
@@ -80,7 +87,7 @@ fun AiSessionsScreen(
                     Column {
                         Text("角色场景聊天", fontWeight = FontWeight.Bold)
                         Text(
-                            if (hasApiKey) "DeepSeek 已配置" else "请先配置 API Key",
+                            statusText,
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -88,7 +95,8 @@ fun AiSessionsScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        keyInput = ""
+                        deepseekInput = ""
+                        siliconInput = ""
                         showKeyDialog = true
                     }) {
                         Icon(Icons.Default.Settings, contentDescription = "API Key")
@@ -99,8 +107,9 @@ fun AiSessionsScreen(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    if (!hasApiKey) {
-                        keyInput = ""
+                    if (!keys.hasDeepseek) {
+                        deepseekInput = ""
+                        siliconInput = ""
                         showKeyDialog = true
                         scope.launch { snackbarHostState.showSnackbar("开始前请先填写 DeepSeek API Key") }
                     } else {
@@ -152,19 +161,34 @@ fun AiSessionsScreen(
     if (showKeyDialog) {
         AlertDialog(
             onDismissRequest = { showKeyDialog = false },
-            title = { Text("DeepSeek API Key") },
+            title = { Text("API Key 设置") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "只保存在本机，不会上传到仓库。模型：deepseek-v4-pro",
+                        "只保存在本机。聊天用 DeepSeek；场景图用硅基流动 FLUX.1-dev。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     OutlinedTextField(
-                        value = keyInput,
-                        onValueChange = { keyInput = it },
+                        value = deepseekInput,
+                        onValueChange = { deepseekInput = it },
                         singleLine = true,
-                        label = { Text("API Key") },
+                        label = { Text("DeepSeek API Key") },
+                        placeholder = {
+                            Text(if (keys.hasDeepseek) "已保存，留空则不改" else "必填")
+                        },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = siliconInput,
+                        onValueChange = { siliconInput = it },
+                        singleLine = true,
+                        label = { Text("硅基流动 API Key") },
+                        placeholder = {
+                            Text(if (keys.hasSiliconflow) "已保存，留空则不改" else "生图必填")
+                        },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         modifier = Modifier.fillMaxWidth()
@@ -174,10 +198,24 @@ fun AiSessionsScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.saveApiKey(keyInput) { result ->
+                        val d = deepseekInput.trim().takeIf { it.isNotEmpty() }
+                        val s = siliconInput.trim().takeIf { it.isNotEmpty() }
+                        if (d == null && s == null) {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("请至少填写一项 Key")
+                            }
+                            return@TextButton
+                        }
+                        if (!keys.hasDeepseek && d == null) {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("请填写 DeepSeek API Key")
+                            }
+                            return@TextButton
+                        }
+                        viewModel.saveKeys(d, s) { result ->
                             result.onSuccess {
                                 showKeyDialog = false
-                                scope.launch { snackbarHostState.showSnackbar("API Key 已保存") }
+                                scope.launch { snackbarHostState.showSnackbar("已保存") }
                             }.onFailure {
                                 scope.launch {
                                     snackbarHostState.showSnackbar(it.message ?: "保存失败")
@@ -189,13 +227,17 @@ fun AiSessionsScreen(
             },
             dismissButton = {
                 Row {
-                    if (hasApiKey) {
-                        TextButton(
-                            onClick = {
-                                viewModel.clearApiKey()
-                                scope.launch { snackbarHostState.showSnackbar("已清除") }
-                            }
-                        ) { Text("清除") }
+                    if (keys.hasDeepseek) {
+                        TextButton(onClick = {
+                            viewModel.clearDeepseekApiKey()
+                            scope.launch { snackbarHostState.showSnackbar("已清除 DeepSeek Key") }
+                        }) { Text("清DeepSeek") }
+                    }
+                    if (keys.hasSiliconflow) {
+                        TextButton(onClick = {
+                            viewModel.clearSiliconflowApiKey()
+                            scope.launch { snackbarHostState.showSnackbar("已清除生图 Key") }
+                        }) { Text("清生图") }
                     }
                     TextButton(onClick = { showKeyDialog = false }) { Text("取消") }
                 }
