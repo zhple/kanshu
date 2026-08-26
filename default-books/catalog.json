@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "folders": [
     "仓库书"
   ],
@@ -91,6 +91,17 @@
       "chapterIndex": 1,
       "scrollOffset": 1,
       "lastReadAt": 1786616393500
+    },
+    {
+      "id": "user-7970634d77",
+      "title": "1",
+      "author": "我写的",
+      "file": "user-7970634d77.txt",
+      "format": "TXT",
+      "folder": "仓库书",
+      "chapterIndex": 0,
+      "scrollOffset": 0,
+      "lastReadAt": 0
     }
   ]
 }
