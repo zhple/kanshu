@@ -10,7 +10,10 @@
       "author": "仓库默认",
       "file": "dianqi-maxituan.epub",
       "format": "EPUB",
-      "folder": "仓库书"
+      "folder": "仓库书",
+      "chapterIndex": 2,
+      "scrollOffset": 156,
+      "lastReadAt": 1787706100966
     },
     {
       "id": "txt-9296",
