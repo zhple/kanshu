@@ -102,6 +102,7 @@ class MainActivity : ComponentActivity() {
                                 )
                                 MusicScreen(
                                     viewModel = vm,
+                                    musicController = app.container.musicController,
                                     onBack = { navController.popBackStack() }
                                 )
                             }

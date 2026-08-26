@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import com.kanshu.reader.data.db.MusicDao
 import com.kanshu.reader.data.db.TrackEntity
+import com.kanshu.reader.music.NcmDecoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -37,31 +38,93 @@ class MusicRepository(
     ): Result<Long> = withContext(Dispatchers.IO) {
         runCatching {
             val displayName = queryDisplayName(contentResolver, uri) ?: "track.mp3"
-            val ext = extensionOf(displayName, contentResolver.getType(uri))
-            require(ext in setOf(".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac")) {
-                "暂支持 mp3 / m4a / aac / ogg / wav / flac"
-            }
-            val safeName = UUID.randomUUID().toString() + ext
-            val dest = File(musicDir, safeName)
-            contentResolver.openInputStream(uri)?.use { input ->
-                dest.outputStream().use { output -> input.copyTo(output) }
-            } ?: error("无法读取所选音频")
-            require(dest.exists() && dest.length() > 0L) { "音频保存失败" }
-            require(dest.length() < 40L * 1024 * 1024) { "文件过大（建议小于 40MB，便于共享上传）" }
-
-            val meta = readMeta(dest, displayName)
+            val rawExt = extensionOf(displayName, contentResolver.getType(uri))
             val order = musicDao.maxSortOrder() + 1
-            musicDao.insert(
-                TrackEntity(
-                    title = meta.first,
-                    artist = meta.second,
-                    fileName = safeName,
-                    durationMs = meta.third,
-                    sortOrder = order,
-                    source = TrackEntity.SOURCE_LOCAL
+
+            if (rawExt == ".ncm") {
+                importNcm(contentResolver, uri, displayName, order)
+            } else {
+                require(rawExt in SUPPORTED_AUDIO_EXT) {
+                    "暂支持 mp3 / m4a / aac / ogg / wav / flac / ncm"
+                }
+                val safeName = UUID.randomUUID().toString() + rawExt
+                val dest = File(musicDir, safeName)
+                contentResolver.openInputStream(uri)?.use { input ->
+                    dest.outputStream().use { output -> input.copyTo(output) }
+                } ?: error("无法读取所选音频")
+                require(dest.exists() && dest.length() > 0L) { "音频保存失败" }
+                require(dest.length() < MAX_IMPORT_BYTES) {
+                    "文件过大（建议小于 40MB，便于共享上传）"
+                }
+                val meta = readMeta(dest, displayName)
+                musicDao.insert(
+                    TrackEntity(
+                        title = meta.first,
+                        artist = meta.second,
+                        fileName = safeName,
+                        durationMs = meta.third,
+                        sortOrder = order,
+                        source = TrackEntity.SOURCE_LOCAL
+                    )
                 )
-            )
+            }
         }
+    }
+
+    suspend fun importTracks(
+        contentResolver: ContentResolver,
+        uris: List<Uri>
+    ): ImportBatchResult = withContext(Dispatchers.IO) {
+        var success = 0
+        var failed = 0
+        var lastError: String? = null
+        uris.forEach { uri ->
+            importTrack(contentResolver, uri)
+                .onSuccess { success++ }
+                .onFailure {
+                    failed++
+                    lastError = it.message ?: "导入失败"
+                }
+        }
+        ImportBatchResult(success, failed, lastError)
+    }
+
+    data class ImportBatchResult(
+        val success: Int,
+        val failed: Int,
+        val lastError: String?
+    )
+
+    private suspend fun importNcm(
+        contentResolver: ContentResolver,
+        uri: Uri,
+        displayName: String,
+        sortOrder: Int
+    ): Long {
+        val decoded = contentResolver.openInputStream(uri)?.use { input ->
+            NcmDecoder.decode(input)
+        } ?: error("无法读取 NCM 文件")
+        require(decoded.audioBytes.isNotEmpty()) { "NCM 解密后音频为空" }
+        require(decoded.audioBytes.size.toLong() < MAX_IMPORT_BYTES) {
+            "解密后文件过大（建议小于 40MB）"
+        }
+        val safeName = UUID.randomUUID().toString() + decoded.ext
+        val dest = File(musicDir, safeName)
+        dest.writeBytes(decoded.audioBytes)
+        val fallbackTitle = displayName.substringBeforeLast('.').ifBlank { "未命名歌曲" }
+        val title = decoded.title?.ifBlank { null } ?: fallbackTitle
+        val artist = decoded.artist?.ifBlank { null } ?: "未知"
+        val meta = readMeta(dest, title)
+        return musicDao.insert(
+            TrackEntity(
+                title = title,
+                artist = artist,
+                fileName = safeName,
+                durationMs = meta.third.takeIf { it > 0L } ?: 0L,
+                sortOrder = sortOrder,
+                source = TrackEntity.SOURCE_LOCAL
+            )
+        )
     }
 
     suspend fun insertRemoteTrack(
@@ -126,6 +189,7 @@ class MusicRepository(
     private fun extensionOf(name: String, mime: String?): String {
         val lower = name.lowercase()
         return when {
+            lower.endsWith(".ncm") -> ".ncm"
             lower.endsWith(".mp3") -> ".mp3"
             lower.endsWith(".m4a") -> ".m4a"
             lower.endsWith(".aac") -> ".aac"
@@ -139,6 +203,11 @@ class MusicRepository(
             mime?.contains("flac") == true -> ".flac"
             else -> ".mp3"
         }
+    }
+
+    companion object {
+        private val SUPPORTED_AUDIO_EXT = setOf(".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac")
+        private const val MAX_IMPORT_BYTES = 40L * 1024 * 1024
     }
 
     private fun queryDisplayName(contentResolver: ContentResolver, uri: Uri): String? {

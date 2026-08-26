@@ -75,12 +75,20 @@ class MusicViewModel(
     }
 
     fun importTrack(uri: Uri, contentResolver: android.content.ContentResolver) {
+        importTracks(listOf(uri), contentResolver)
+    }
+
+    fun importTracks(uris: List<Uri>, contentResolver: android.content.ContentResolver) {
+        if (uris.isEmpty()) return
         viewModelScope.launch {
-            val result = musicRepository.importTrack(contentResolver, uri)
-            _message.value = result.fold(
-                onSuccess = { "已加入歌单" },
-                onFailure = { it.message ?: "导入失败" }
-            )
+            val result = musicRepository.importTracks(contentResolver, uris)
+            _message.value = when {
+                result.success > 0 && result.failed == 0 ->
+                    if (result.success == 1) "已加入歌单" else "已加入 ${result.success} 首"
+                result.success > 0 && result.failed > 0 ->
+                    "已加入 ${result.success} 首，${result.failed} 首失败"
+                else -> result.lastError ?: "导入失败"
+            }
         }
     }
 
@@ -145,17 +153,19 @@ class MusicViewModel(
 @Composable
 fun MusicScreen(
     viewModel: MusicViewModel,
+    musicController: MusicController,
     onBack: () -> Unit
 ) {
     val tracks by viewModel.tracks.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val miniPlayerInset = miniPlayerBottomInset(musicController)
 
     val picker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri != null) viewModel.importTrack(uri, context.contentResolver)
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) viewModel.importTracks(uris, context.contentResolver)
     }
 
     LaunchedEffect(message) {
@@ -194,6 +204,7 @@ fun MusicScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
+                modifier = Modifier.padding(bottom = miniPlayerInset),
                 onClick = {
                     picker.launch(
                         arrayOf(
@@ -204,6 +215,7 @@ fun MusicScreen(
                             "audio/ogg",
                             "audio/wav",
                             "audio/flac",
+                            "application/octet-stream",
                             "*/*"
                         )
                     )
@@ -225,7 +237,7 @@ fun MusicScreen(
             ) {
                 Text("歌单还是空的", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "点右下角导入本地歌曲，或点云朵同步朋友分享的歌单。",
+                    "点右下角导入本地歌曲（可多选，含 .ncm），或点云朵同步朋友分享的歌单。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp)
@@ -236,7 +248,12 @@ fun MusicScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 16.dp,
+                    bottom = 16.dp + miniPlayerInset
+                ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 itemsIndexed(tracks, key = { _, t -> t.id }) { index, track ->
