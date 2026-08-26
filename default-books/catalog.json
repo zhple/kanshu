@@ -21,7 +21,10 @@
       "author": "仓库默认",
       "file": "txt-9296.txt",
       "format": "TXT",
-      "folder": "仓库书"
+      "folder": "仓库书",
+      "chapterIndex": 0,
+      "scrollOffset": 0,
+      "lastReadAt": 0
     },
     {
       "id": "txt-172785",
