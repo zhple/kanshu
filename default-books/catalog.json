@@ -43,7 +43,10 @@
       "author": "仓库默认",
       "file": "txt-72775.txt",
       "format": "TXT",
-      "folder": "仓库书"
+      "folder": "仓库书",
+      "chapterIndex": 0,
+      "scrollOffset": 3,
+      "lastReadAt": 1786616353553
     },
     {
       "id": "txt-1",
