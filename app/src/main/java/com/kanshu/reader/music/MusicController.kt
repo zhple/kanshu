@@ -1,6 +1,7 @@
 package com.kanshu.reader.music
 
 import android.content.Context
+import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -88,7 +89,7 @@ class MusicController(
         if (playable.isEmpty()) return
         queue = playable.map { it.first }
         val items = playable.map { (_, file) ->
-            MediaItem.fromUri(file.toURI().toString())
+            MediaItem.fromUri(Uri.fromFile(file))
         }
         val index = startIndex.coerceIn(0, items.lastIndex)
         player.setMediaItems(items, index, 0L)

@@ -40,8 +40,9 @@ class MusicRepository(
             val displayName = queryDisplayName(contentResolver, uri) ?: "track.mp3"
             val rawExt = extensionOf(displayName, contentResolver.getType(uri))
             val order = musicDao.maxSortOrder() + 1
+            val ncmFile = rawExt == ".ncm" || isNcmUri(contentResolver, uri)
 
-            if (rawExt == ".ncm") {
+            if (ncmFile) {
                 importNcm(contentResolver, uri, displayName, order)
             } else {
                 require(rawExt in SUPPORTED_AUDIO_EXT) {
@@ -208,6 +209,14 @@ class MusicRepository(
     companion object {
         private val SUPPORTED_AUDIO_EXT = setOf(".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac")
         private const val MAX_IMPORT_BYTES = 40L * 1024 * 1024
+    }
+
+    private fun isNcmUri(contentResolver: ContentResolver, uri: Uri): Boolean {
+        return runCatching {
+            contentResolver.openInputStream(uri)?.use { input ->
+                NcmDecoder.isNcmMagic(input)
+            } ?: false
+        }.getOrDefault(false)
     }
 
     private fun queryDisplayName(contentResolver: ContentResolver, uri: Uri): String? {
