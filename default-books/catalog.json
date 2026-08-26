@@ -87,7 +87,10 @@
       "author": "未知作者",
       "file": "user-3584265174.txt",
       "format": "TXT",
-      "folder": "仓库书"
+      "folder": "仓库书",
+      "chapterIndex": 1,
+      "scrollOffset": 1,
+      "lastReadAt": 1786616393500
     }
   ]
 }
