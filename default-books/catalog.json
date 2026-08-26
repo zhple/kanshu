@@ -76,7 +76,10 @@
       "author": "未知作者",
       "file": "user-de7f8b8c4b.txt",
       "format": "TXT",
-      "folder": "仓库书"
+      "folder": "仓库书",
+      "chapterIndex": 0,
+      "scrollOffset": 4,
+      "lastReadAt": 1786615462046
     },
     {
       "id": "user-3584265174",
