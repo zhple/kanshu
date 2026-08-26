@@ -12,15 +12,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         BookEntity::class,
         FolderEntity::class,
         AiSessionEntity::class,
-        AiMessageEntity::class
+        AiMessageEntity::class,
+        TrackEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
     abstract fun folderDao(): FolderDao
     abstract fun aiChatDao(): AiChatDao
+    abstract fun musicDao(): MusicDao
 
     companion object {
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -96,6 +98,26 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS music_tracks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        title TEXT NOT NULL,
+                        artist TEXT NOT NULL,
+                        fileName TEXT NOT NULL,
+                        durationMs INTEGER NOT NULL,
+                        sortOrder INTEGER NOT NULL,
+                        remoteId TEXT,
+                        source TEXT NOT NULL,
+                        addedAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -106,7 +128,13 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "kanshu.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6
+                    )
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onOpen(db: SupportSQLiteDatabase) {
                             db.execSQL("PRAGMA foreign_keys=ON")

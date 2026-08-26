@@ -13,8 +13,8 @@ android {
         applicationId = "com.kanshu.reader"
         minSdk = 24
         targetSdk = 35
-        versionCode = 25
-        versionName = "1.7.1"
+        versionCode = 26
+        versionName = "1.8.0"
 
         // 自动更新：指向 GitHub Releases latest API
         buildConfigField(
@@ -32,6 +32,17 @@ android {
             "String",
             "DEFAULT_BOOKS_BASE_URL",
             "\"https://raw.githubusercontent.com/zhple/kanshu/main/default-books\""
+        )
+        // 共享歌单：playlist + 音频目录（raw）
+        buildConfigField(
+            "String",
+            "DEFAULT_MUSIC_CATALOG_URL",
+            "\"https://raw.githubusercontent.com/zhple/kanshu/main/default-music/playlist.json\""
+        )
+        buildConfigField(
+            "String",
+            "DEFAULT_MUSIC_BASE_URL",
+            "\"https://raw.githubusercontent.com/zhple/kanshu/main/default-music\""
         )
         buildConfigField("String", "GITHUB_OWNER", "\"zhple\"")
         buildConfigField("String", "GITHUB_REPO", "\"kanshu\"")
@@ -96,4 +107,8 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     // Notion 风格块拖拽排序：https://github.com/Calvin-LL/Reorderable
     implementation("sh.calvin.reorderable:reorderable:3.0.0")
+
+    val media3 = "1.5.1"
+    implementation("androidx.media3:media3-exoplayer:$media3")
+    implementation("androidx.media3:media3-common:$media3")
 }
