@@ -115,7 +115,7 @@ object TextPdfExporter {
                         drawWrapped("【无法读取图片】", bodyPaint)
                         continue
                     }
-                    val maxImgW = contentWidth
+                    val maxImgW = contentWidth * block.widthPercent.coerceIn(0.3f, 1f)
                     val maxImgH = PAGE_HEIGHT - MARGIN * 2 - 80f
                     var sample = 1
                     while (
@@ -154,7 +154,7 @@ object TextPdfExporter {
 
     private sealed class Block {
         data class Text(val value: String) : Block()
-        data class Image(val path: String) : Block()
+        data class Image(val path: String, val widthPercent: Float) : Block()
     }
 
     private fun splitBlocks(content: String): List<Block> {
@@ -167,7 +167,12 @@ object TextPdfExporter {
                     .split('\n')
                     .forEach { result += Block.Text(it) }
             }
-            result += Block.Image(match.groupValues[1].trim())
+            val path = match.groupValues[1].trim()
+            val width = match.groupValues.getOrNull(2)
+                ?.toFloatOrNull()
+                ?.coerceIn(0.3f, 1f)
+                ?: 1f
+            result += Block.Image(path, width)
             last = match.range.last + 1
         }
         if (last < normalized.length) {

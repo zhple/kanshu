@@ -8,7 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.kanshu.reader.data.prefs.ThemePreferences
 import com.kanshu.reader.data.remote.GithubBooksUploader
 import com.kanshu.reader.data.repo.BookRepository
-import com.kanshu.reader.reader.WriteMarkers
+import com.kanshu.reader.reader.WriteBlock
+import com.kanshu.reader.reader.WriteBlocks
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,16 +25,18 @@ data class WriteUiState(
     val loading: Boolean = false,
     val saving: Boolean = false,
     val title: String = "",
-    val content: String = "",
+    val blocks: List<WriteBlock> = listOf(WriteBlock.Paragraph("")),
     val saveFormat: BookRepository.WriteSaveFormat = BookRepository.WriteSaveFormat.TXT,
     val uploadToRemote: Boolean = false,
     val bookId: Long? = null,
     val chapterCount: Int = 0,
-    val insertedImages: List<String> = emptyList(),
+    val focusedBlockIndex: Int = 0,
     val error: String? = null,
     val savedMessage: String? = null,
     val savedBookId: Long? = null
-)
+) {
+    val content: String get() = WriteBlocks.serialize(blocks)
+}
 
 class WriteViewModel(
     private val bookId: Long?,
@@ -60,6 +63,7 @@ class WriteViewModel(
                 val book = bookRepository.getBook(id) ?: error("文稿不存在")
                 require(bookRepository.canEditBook(id)) { "这篇文稿无法编辑" }
                 val content = bookRepository.readTextContent(id)
+                val blocks = WriteBlocks.parse(content)
                 val format = when {
                     book.format.equals("PDF", ignoreCase = true) ->
                         BookRepository.WriteSaveFormat.PDF
@@ -69,11 +73,11 @@ class WriteViewModel(
                     it.copy(
                         loading = false,
                         title = book.title,
-                        content = content,
+                        blocks = blocks,
                         bookId = id,
                         saveFormat = format,
-                        chapterCount = countChapters(content),
-                        insertedImages = extractImages(content)
+                        chapterCount = countChapters(WriteBlocks.serialize(blocks)),
+                        focusedBlockIndex = 0
                     )
                 }
             }.onFailure { e ->
@@ -88,12 +92,59 @@ class WriteViewModel(
         _uiState.update { it.copy(title = value) }
     }
 
-    fun setContent(value: String) {
-        _uiState.update {
-            it.copy(
-                content = value,
-                chapterCount = countChapters(value),
-                insertedImages = extractImages(value)
+    fun setFocusedBlock(index: Int) {
+        _uiState.update { it.copy(focusedBlockIndex = index.coerceAtLeast(0)) }
+    }
+
+    fun updateParagraph(index: Int, text: String) {
+        _uiState.update { state ->
+            val blocks = state.blocks.toMutableList()
+            if (index !in blocks.indices) return@update state
+            if (blocks[index] !is WriteBlock.Paragraph) return@update state
+            blocks[index] = WriteBlock.Paragraph(text)
+            state.copy(
+                blocks = blocks,
+                chapterCount = countChapters(WriteBlocks.serialize(blocks)),
+                focusedBlockIndex = index
+            )
+        }
+    }
+
+    fun setImageWidth(index: Int, widthPercent: Float) {
+        _uiState.update { state ->
+            val blocks = state.blocks.toMutableList()
+            val current = blocks.getOrNull(index) as? WriteBlock.Image ?: return@update state
+            blocks[index] = current.copy(widthPercent = widthPercent.coerceIn(0.3f, 1f))
+            state.copy(blocks = blocks)
+        }
+    }
+
+    fun moveBlock(index: Int, delta: Int) {
+        _uiState.update { state ->
+            val target = index + delta
+            if (index !in state.blocks.indices || target !in state.blocks.indices) return@update state
+            val blocks = state.blocks.toMutableList()
+            val item = blocks.removeAt(index)
+            blocks.add(target, item)
+            if (blocks.last() !is WriteBlock.Paragraph) {
+                blocks += WriteBlock.Paragraph("")
+            }
+            state.copy(blocks = blocks, focusedBlockIndex = target)
+        }
+    }
+
+    fun removeBlock(index: Int) {
+        _uiState.update { state ->
+            if (index !in state.blocks.indices) return@update state
+            val blocks = state.blocks.toMutableList()
+            blocks.removeAt(index)
+            if (blocks.isEmpty() || blocks.last() !is WriteBlock.Paragraph) {
+                blocks += WriteBlock.Paragraph("")
+            }
+            state.copy(
+                blocks = blocks,
+                chapterCount = countChapters(WriteBlocks.serialize(blocks)),
+                focusedBlockIndex = index.coerceIn(0, blocks.lastIndex)
             )
         }
     }
@@ -110,7 +161,6 @@ class WriteViewModel(
         _uiState.update { it.copy(savedMessage = null, savedBookId = null) }
     }
 
-    /** 在文末插入下一章标题，方便连续写作。 */
     fun startNextChapter(subtitle: String = "") {
         val state = _uiState.value
         val next = countChapters(state.content) + 1
@@ -124,12 +174,31 @@ class WriteViewModel(
                 append(sub)
             }
         }
-        val base = state.content.trimEnd()
-        val nextContent = when {
-            base.isBlank() -> "$heading\n\n"
-            else -> "$base\n\n$heading\n\n"
+        val blocks = state.blocks.toMutableList()
+        val focus = state.focusedBlockIndex.coerceIn(0, blocks.lastIndex)
+        val insertAt = when (val cur = blocks.getOrNull(focus)) {
+            is WriteBlock.Paragraph -> {
+                val base = cur.text.trimEnd()
+                blocks[focus] = WriteBlock.Paragraph(
+                    if (base.isBlank()) heading else "$base\n\n$heading"
+                )
+                focus + 1
+            }
+            else -> {
+                blocks.add(focus + 1, WriteBlock.Paragraph(heading))
+                focus + 2
+            }
         }
-        setContent(nextContent)
+        if (insertAt >= blocks.size || blocks.getOrNull(insertAt) !is WriteBlock.Paragraph) {
+            blocks.add(insertAt.coerceAtMost(blocks.size), WriteBlock.Paragraph(""))
+        }
+        _uiState.update {
+            it.copy(
+                blocks = blocks,
+                chapterCount = countChapters(WriteBlocks.serialize(blocks)),
+                focusedBlockIndex = insertAt.coerceIn(0, blocks.lastIndex)
+            )
+        }
     }
 
     fun insertImage(contentResolver: ContentResolver, uri: Uri) {
@@ -137,15 +206,17 @@ class WriteViewModel(
             _uiState.update { it.copy(error = null) }
             runCatching {
                 val relative = bookRepository.importWriteImage(contentResolver, uri)
-                val marker = WriteMarkers.imageMarker(relative)
-                val base = _uiState.value.content.trimEnd()
-                val next = if (base.isBlank()) "$marker\n\n" else "$base\n\n$marker\n\n"
-                setContent(next)
-                // 选 PDF 更利于看图
-                if (_uiState.value.saveFormat == BookRepository.WriteSaveFormat.TXT &&
-                    extractImages(next).isNotEmpty()
-                ) {
-                    _uiState.update { it.copy(saveFormat = BookRepository.WriteSaveFormat.PDF) }
+                _uiState.update { state ->
+                    val blocks = state.blocks.toMutableList()
+                    val focus = state.focusedBlockIndex.coerceIn(0, (blocks.size - 1).coerceAtLeast(0))
+                    val insertAt = (focus + 1).coerceAtMost(blocks.size)
+                    blocks.add(insertAt, WriteBlock.Image(relative, widthPercent = 1f))
+                    blocks.add(insertAt + 1, WriteBlock.Paragraph(""))
+                    state.copy(
+                        blocks = blocks,
+                        saveFormat = BookRepository.WriteSaveFormat.PDF,
+                        focusedBlockIndex = insertAt + 1
+                    )
                 }
             }.onFailure { e ->
                 _uiState.update { it.copy(error = e.message ?: "插入图片失败") }
@@ -160,19 +231,20 @@ class WriteViewModel(
             val state = _uiState.value
             _uiState.update { it.copy(saving = true, error = null) }
             runCatching {
-                require(state.content.isNotBlank()) { "先写点内容再保存" }
+                require(!WriteBlocks.contentLooksEmpty(state.blocks)) { "先写点内容再保存" }
+                val content = WriteBlocks.serialize(state.blocks)
                 val id = if (state.bookId != null) {
                     bookRepository.updateWrittenBook(
                         bookId = state.bookId,
                         title = state.title,
-                        content = state.content,
+                        content = content,
                         format = state.saveFormat
                     )
                     state.bookId
                 } else {
                     bookRepository.createWrittenBook(
                         title = state.title,
-                        content = state.content,
+                        content = content,
                         format = state.saveFormat,
                         folderId = folderId
                     )
@@ -219,13 +291,6 @@ class WriteViewModel(
                 val t = line.trim()
                 t.isNotEmpty() && chapterLineRegex.containsMatchIn(t)
             }
-        }
-
-        fun extractImages(content: String): List<String> {
-            return WriteMarkers.imageRegex.findAll(content)
-                .map { it.groupValues[1].trim() }
-                .filter { it.isNotEmpty() }
-                .toList()
         }
 
         fun factory(

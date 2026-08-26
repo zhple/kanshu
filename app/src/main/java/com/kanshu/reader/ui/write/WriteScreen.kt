@@ -3,24 +3,26 @@ package com.kanshu.reader.ui.write
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LibraryAdd
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.AlertDialog
@@ -34,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -48,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -55,6 +59,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.kanshu.reader.data.repo.BookRepository
+import com.kanshu.reader.reader.WriteBlock
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,7 +101,7 @@ fun WriteScreen(
             title = { Text("开始下一章") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("将在文末插入「第${state.chapterCount + 1}章」。可填写章节名（可选）。")
+                    Text("将在当前光标附近插入「第${state.chapterCount + 1}章」。可填写章节名（可选）。")
                     OutlinedTextField(
                         value = chapterSubtitle,
                         onValueChange = { chapterSubtitle = it },
@@ -113,14 +119,10 @@ fun WriteScreen(
                         chapterSubtitle = ""
                         showChapterDialog = false
                     }
-                ) {
-                    Text("插入")
-                }
+                ) { Text("插入") }
             },
             dismissButton = {
-                TextButton(onClick = { showChapterDialog = false }) {
-                    Text("取消")
-                }
+                TextButton(onClick = { showChapterDialog = false }) { Text("取消") }
             }
         )
     }
@@ -144,9 +146,13 @@ fun WriteScreen(
                         onClick = viewModel::save,
                         enabled = !state.saving && !state.loading
                     ) {
-                        Icon(Icons.Default.Save, contentDescription = null)
-                        Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                        Text(if (state.saving) "保存中…" else "保存")
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Save, contentDescription = null)
+                            Text(if (state.saving) "保存中…" else "保存")
+                        }
                     }
                 }
             )
@@ -203,9 +209,9 @@ fun WriteScreen(
                 }
                 Text(
                     if (state.saveFormat == BookRepository.WriteSaveFormat.PDF) {
-                        "PDF 适合带插图；书架里用 PDF 阅读器打开，仍可再编辑。"
+                        "图片会直接显示在正文里，可调大小和上下位置；保存为 PDF 后书架里也能看到图。"
                     } else {
-                        "TXT 适合纯文字；插图会变成文字占位。含图时建议选 PDF。"
+                        "TXT 不含真实图片。有插图时请选 PDF。"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -242,42 +248,41 @@ fun WriteScreen(
                         }
                     }
                 }
-                if (state.chapterCount > 0) {
-                    Text(
-                        "已有 ${state.chapterCount} 个章节标题",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
 
-                OutlinedTextField(
-                    value = state.content,
-                    onValueChange = viewModel::setContent,
-                    label = { Text("正文") },
-                    placeholder = { Text("写完一章后点「下一章」；可插入图片…") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(420.dp),
-                    minLines = 12
-                )
-
-                if (state.insertedImages.isNotEmpty()) {
-                    Text("已插入图片", style = MaterialTheme.typography.labelLarge)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        state.insertedImages.forEach { path ->
-                            val file = viewModel.resolveImageFile(path)
-                            AsyncImage(
-                                model = file,
-                                contentDescription = path,
-                                contentScale = ContentScale.Crop,
+                Text("正文", style = MaterialTheme.typography.labelLarge)
+                state.blocks.forEachIndexed { index, block ->
+                    when (block) {
+                        is WriteBlock.Paragraph -> {
+                            OutlinedTextField(
+                                value = block.text,
+                                onValueChange = { viewModel.updateParagraph(index, it) },
+                                placeholder = {
+                                    Text(
+                                        if (index == 0) "在这里写正文…" else "继续写…"
+                                    )
+                                },
                                 modifier = Modifier
-                                    .size(72.dp)
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .fillMaxWidth()
+                                    .heightIn(min = 96.dp)
+                                    .onFocusChanged { focus ->
+                                        if (focus.isFocused) viewModel.setFocusedBlock(index)
+                                    },
+                                minLines = if (index == 0) 5 else 3
+                            )
+                        }
+                        is WriteBlock.Image -> {
+                            ImageBlockEditor(
+                                path = block.path,
+                                widthPercent = block.widthPercent,
+                                file = viewModel.resolveImageFile(block.path),
+                                canMoveUp = index > 0,
+                                canMoveDown = index < state.blocks.lastIndex,
+                                enabled = !state.saving,
+                                onWidthChange = { viewModel.setImageWidth(index, it) },
+                                onMoveUp = { viewModel.moveBlock(index, -1) },
+                                onMoveDown = { viewModel.moveBlock(index, 1) },
+                                onDelete = { viewModel.removeBlock(index) },
+                                onFocus = { viewModel.setFocusedBlock(index) }
                             )
                         }
                     }
@@ -305,12 +310,81 @@ fun WriteScreen(
                         )
                     }
                 }
-                Text(
-                    "默认只保存在本机书架，可随时再打开继续改。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
+    }
+}
+
+@Composable
+private fun ImageBlockEditor(
+    path: String,
+    widthPercent: Float,
+    file: java.io.File?,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    enabled: Boolean,
+    onWidthChange: (Float) -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onDelete: () -> Unit,
+    onFocus: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("图片", style = MaterialTheme.typography.labelLarge)
+            Row {
+                IconButton(onClick = { onFocus(); onMoveUp() }, enabled = enabled && canMoveUp) {
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "上移")
+                }
+                IconButton(onClick = { onFocus(); onMoveDown() }, enabled = enabled && canMoveDown) {
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "下移")
+                }
+                IconButton(onClick = onDelete, enabled = enabled) {
+                    Icon(Icons.Default.Delete, contentDescription = "删除")
+                }
+            }
+        }
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = file,
+                contentDescription = path,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxWidth(widthPercent.coerceIn(0.3f, 1f))
+                    .heightIn(max = 360.dp)
+                    .clip(RoundedCornerShape(8.dp))
+            )
+        }
+        Text(
+            "宽度 ${(widthPercent * 100).roundToInt()}%",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Slider(
+            value = widthPercent,
+            onValueChange = {
+                onFocus()
+                onWidthChange(it)
+            },
+            valueRange = 0.3f..1f,
+            enabled = enabled
+        )
     }
 }
