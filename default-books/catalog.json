@@ -1,5 +1,5 @@
 {
-  "version": 8,
+  "version": 9,
   "folders": [
     "仓库书"
   ],
@@ -113,6 +113,17 @@
       "chapterIndex": 3,
       "scrollOffset": 0,
       "lastReadAt": 1787330631419
+    },
+    {
+      "id": "user-ad623a8319",
+      "title": "调酒师必读",
+      "author": "PDF",
+      "file": "user-ad623a8319.pdf",
+      "format": "PDF",
+      "folder": "仓库书",
+      "chapterIndex": 1,
+      "scrollOffset": 0,
+      "lastReadAt": 1787330636002
     }
   ]
 }
