@@ -10,6 +10,7 @@ import com.kanshu.reader.data.remote.GithubBooksUploader
 import com.kanshu.reader.data.repo.BookRepository
 import com.kanshu.reader.reader.WriteBlock
 import com.kanshu.reader.reader.WriteBlocks
+import com.kanshu.reader.reader.WriteEditPage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +27,8 @@ data class WriteUiState(
     val saving: Boolean = false,
     val title: String = "",
     val blocks: List<WriteBlock> = listOf(WriteBlock.Paragraph("")),
+    val pages: List<WriteEditPage> = listOf(WriteEditPage("正文", 0, 1)),
+    val pageIndex: Int = 0,
     val saveFormat: BookRepository.WriteSaveFormat = BookRepository.WriteSaveFormat.TXT,
     val uploadToRemote: Boolean = false,
     val bookId: Long? = null,
@@ -70,14 +73,16 @@ class WriteViewModel(
                     else -> BookRepository.WriteSaveFormat.TXT
                 }
                 _uiState.update {
-                    it.copy(
-                        loading = false,
-                        title = book.title,
-                        blocks = blocks,
-                        bookId = id,
-                        saveFormat = format,
-                        chapterCount = countChapters(WriteBlocks.serialize(blocks)),
-                        focusedBlockIndex = 0
+                    rebuild(
+                        it.copy(
+                            loading = false,
+                            title = book.title,
+                            blocks = blocks,
+                            bookId = id,
+                            saveFormat = format,
+                            focusedBlockIndex = 0,
+                            pageIndex = 0
+                        )
                     )
                 }
             }.onFailure { e ->
@@ -88,8 +93,25 @@ class WriteViewModel(
         }
     }
 
+    private fun rebuild(state: WriteUiState): WriteUiState {
+        val pages = WriteBlocks.buildPages(state.blocks)
+        val pageIndex = state.pageIndex.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+        return state.copy(
+            pages = pages,
+            pageIndex = pageIndex,
+            chapterCount = countChapters(WriteBlocks.serialize(state.blocks))
+        )
+    }
+
     fun setTitle(value: String) {
         _uiState.update { it.copy(title = value) }
+    }
+
+    fun setPageIndex(index: Int) {
+        _uiState.update { state ->
+            val max = (state.pages.size - 1).coerceAtLeast(0)
+            state.copy(pageIndex = index.coerceIn(0, max))
+        }
     }
 
     fun setFocusedBlock(index: Int) {
@@ -100,13 +122,9 @@ class WriteViewModel(
         _uiState.update { state ->
             val blocks = state.blocks.toMutableList()
             if (index !in blocks.indices) return@update state
-            if (blocks[index] !is WriteBlock.Paragraph) return@update state
-            blocks[index] = WriteBlock.Paragraph(text)
-            state.copy(
-                blocks = blocks,
-                chapterCount = countChapters(WriteBlocks.serialize(blocks)),
-                focusedBlockIndex = index
-            )
+            val current = blocks[index] as? WriteBlock.Paragraph ?: return@update state
+            blocks[index] = current.copy(text = text)
+            rebuild(state.copy(blocks = blocks, focusedBlockIndex = index))
         }
     }
 
@@ -115,7 +133,28 @@ class WriteViewModel(
             val blocks = state.blocks.toMutableList()
             val current = blocks.getOrNull(index) as? WriteBlock.Image ?: return@update state
             blocks[index] = current.copy(widthPercent = widthPercent.coerceIn(0.3f, 1f))
-            state.copy(blocks = blocks)
+            rebuild(state.copy(blocks = blocks))
+        }
+    }
+
+    /** 在当前编辑页内拖拽排序（from/to 为页内局部下标）。 */
+    fun moveWithinPage(fromLocal: Int, toLocal: Int) {
+        if (fromLocal == toLocal) return
+        _uiState.update { state ->
+            val page = state.pages.getOrNull(state.pageIndex) ?: return@update state
+            val from = page.startIndex + fromLocal
+            val to = page.startIndex + toLocal
+            if (from !in state.blocks.indices || to !in state.blocks.indices) return@update state
+            // 页内重排不改分页边界，避免拖拽过程中页结构抖动
+            if (from !in page.startIndex until page.endExclusive ||
+                to !in page.startIndex until page.endExclusive
+            ) {
+                return@update state
+            }
+            val blocks = state.blocks.toMutableList()
+            val item = blocks.removeAt(from)
+            blocks.add(to, item)
+            state.copy(blocks = blocks, focusedBlockIndex = to)
         }
     }
 
@@ -129,7 +168,11 @@ class WriteViewModel(
             if (blocks.last() !is WriteBlock.Paragraph) {
                 blocks += WriteBlock.Paragraph("")
             }
-            state.copy(blocks = blocks, focusedBlockIndex = target)
+            val rebuilt = rebuild(state.copy(blocks = blocks, focusedBlockIndex = target))
+            // 尽量留在包含该块的页
+            val pageIdx = rebuilt.pages.indexOfFirst { target in it.startIndex until it.endExclusive }
+                .coerceAtLeast(0)
+            rebuilt.copy(pageIndex = pageIdx)
         }
     }
 
@@ -141,10 +184,11 @@ class WriteViewModel(
             if (blocks.isEmpty() || blocks.last() !is WriteBlock.Paragraph) {
                 blocks += WriteBlock.Paragraph("")
             }
-            state.copy(
-                blocks = blocks,
-                chapterCount = countChapters(WriteBlocks.serialize(blocks)),
-                focusedBlockIndex = index.coerceIn(0, blocks.lastIndex)
+            rebuild(
+                state.copy(
+                    blocks = blocks,
+                    focusedBlockIndex = index.coerceIn(0, blocks.lastIndex)
+                )
             )
         }
     }
@@ -179,8 +223,8 @@ class WriteViewModel(
         val insertAt = when (val cur = blocks.getOrNull(focus)) {
             is WriteBlock.Paragraph -> {
                 val base = cur.text.trimEnd()
-                blocks[focus] = WriteBlock.Paragraph(
-                    if (base.isBlank()) heading else "$base\n\n$heading"
+                blocks[focus] = cur.copy(
+                    text = if (base.isBlank()) heading else "$base\n\n$heading"
                 )
                 focus + 1
             }
@@ -192,13 +236,16 @@ class WriteViewModel(
         if (insertAt >= blocks.size || blocks.getOrNull(insertAt) !is WriteBlock.Paragraph) {
             blocks.add(insertAt.coerceAtMost(blocks.size), WriteBlock.Paragraph(""))
         }
-        _uiState.update {
-            it.copy(
+        val rebuilt = rebuild(
+            state.copy(
                 blocks = blocks,
-                chapterCount = countChapters(WriteBlocks.serialize(blocks)),
                 focusedBlockIndex = insertAt.coerceIn(0, blocks.lastIndex)
             )
-        }
+        )
+        val pageIdx = rebuilt.pages.indexOfFirst {
+            rebuilt.focusedBlockIndex in it.startIndex until it.endExclusive
+        }.coerceAtLeast(0)
+        _uiState.value = rebuilt.copy(pageIndex = pageIdx)
     }
 
     fun insertImage(contentResolver: ContentResolver, uri: Uri) {
@@ -208,15 +255,30 @@ class WriteViewModel(
                 val relative = bookRepository.importWriteImage(contentResolver, uri)
                 _uiState.update { state ->
                     val blocks = state.blocks.toMutableList()
-                    val focus = state.focusedBlockIndex.coerceIn(0, (blocks.size - 1).coerceAtLeast(0))
-                    val insertAt = (focus + 1).coerceAtMost(blocks.size)
+                    val page = state.pages.getOrNull(state.pageIndex)
+                    val focus = state.focusedBlockIndex.coerceIn(
+                        0,
+                        (blocks.size - 1).coerceAtLeast(0)
+                    )
+                    val insertAt = when {
+                        page != null && focus in page.startIndex until page.endExclusive ->
+                            (focus + 1).coerceAtMost(page.endExclusive)
+                        page != null -> page.endExclusive
+                        else -> (focus + 1).coerceAtMost(blocks.size)
+                    }
                     blocks.add(insertAt, WriteBlock.Image(relative, widthPercent = 1f))
                     blocks.add(insertAt + 1, WriteBlock.Paragraph(""))
-                    state.copy(
-                        blocks = blocks,
-                        saveFormat = BookRepository.WriteSaveFormat.PDF,
-                        focusedBlockIndex = insertAt + 1
+                    val rebuilt = rebuild(
+                        state.copy(
+                            blocks = blocks,
+                            saveFormat = BookRepository.WriteSaveFormat.PDF,
+                            focusedBlockIndex = insertAt + 1
+                        )
                     )
+                    val pageIdx = rebuilt.pages.indexOfFirst {
+                        insertAt in it.startIndex until it.endExclusive
+                    }.coerceAtLeast(0)
+                    rebuilt.copy(pageIndex = pageIdx)
                 }
             }.onFailure { e ->
                 _uiState.update { it.copy(error = e.message ?: "插入图片失败") }

@@ -3,29 +3,38 @@ package com.kanshu.reader.ui.write
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.NavigateBefore
+import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.LibraryAdd
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,6 +57,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,14 +65,18 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.kanshu.reader.data.repo.BookRepository
 import com.kanshu.reader.reader.WriteBlock
+import kotlinx.coroutines.flow.distinctUntilChanged
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun WriteScreen(
     viewModel: WriteViewModel,
@@ -101,7 +115,7 @@ fun WriteScreen(
             title = { Text("开始下一章") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("将在当前光标附近插入「第${state.chapterCount + 1}章」。可填写章节名（可选）。")
+                    Text("插入「第${state.chapterCount + 1}章」并尽量翻到新页。")
                     OutlinedTextField(
                         value = chapterSubtitle,
                         onValueChange = { chapterSubtitle = it },
@@ -157,7 +171,19 @@ fun WriteScreen(
                 }
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        bottomBar = {
+            if (!state.loading && state.pages.isNotEmpty()) {
+                WritePageBar(
+                    pageLabel = "${state.pageIndex + 1} / ${state.pages.size}",
+                    pageTitle = state.pages.getOrNull(state.pageIndex)?.title.orEmpty(),
+                    canPrev = state.pageIndex > 0,
+                    canNext = state.pageIndex < state.pages.lastIndex,
+                    onPrev = { viewModel.setPageIndex(state.pageIndex - 1) },
+                    onNext = { viewModel.setPageIndex(state.pageIndex + 1) }
+                )
+            }
+        }
     ) { padding ->
         if (state.loading) {
             Box(
@@ -174,9 +200,8 @@ fun WriteScreen(
                     .fillMaxSize()
                     .padding(padding)
                     .imePadding()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(
                     value = state.title,
@@ -187,7 +212,6 @@ fun WriteScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Text("保存格式", style = MaterialTheme.typography.labelLarge)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -197,94 +221,79 @@ fun WriteScreen(
                         onClick = {
                             viewModel.setSaveFormat(BookRepository.WriteSaveFormat.TXT)
                         },
-                        label = { Text("TXT 文本") }
+                        label = { Text("TXT") }
                     )
                     FilterChip(
                         selected = state.saveFormat == BookRepository.WriteSaveFormat.PDF,
                         onClick = {
                             viewModel.setSaveFormat(BookRepository.WriteSaveFormat.PDF)
                         },
-                        label = { Text("PDF 文档") }
+                        label = { Text("PDF") }
                     )
+                    OutlinedButton(
+                        onClick = { showChapterDialog = true },
+                        enabled = !state.saving
+                    ) {
+                        Icon(Icons.Default.LibraryAdd, contentDescription = null)
+                        Text("下一章", modifier = Modifier.padding(start = 4.dp))
+                    }
+                    OutlinedButton(
+                        onClick = { imagePicker.launch("image/*") },
+                        enabled = !state.saving
+                    ) {
+                        Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
+                        Text("插图", modifier = Modifier.padding(start = 4.dp))
+                    }
                 }
+
                 Text(
-                    if (state.saveFormat == BookRepository.WriteSaveFormat.PDF) {
-                        "图片会直接显示在正文里，可调大小和上下位置；保存为 PDF 后书架里也能看到图。"
-                    } else {
-                        "TXT 不含真实图片。有插图时请选 PDF。"
-                    },
+                    "左右翻页编辑；长按图片左侧把手可拖动调整位置。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = { showChapterDialog = true },
-                        enabled = !state.saving,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.LibraryAdd, contentDescription = null)
-                            Text("下一章")
-                        }
-                    }
-                    OutlinedButton(
-                        onClick = { imagePicker.launch("image/*") },
-                        enabled = !state.saving,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
-                            Text("插入图片")
-                        }
+                val pagerState = rememberPagerState(
+                    initialPage = state.pageIndex.coerceIn(0, (state.pages.size - 1).coerceAtLeast(0)),
+                    pageCount = { state.pages.size.coerceAtLeast(1) }
+                )
+                LaunchedEffect(state.pageIndex, state.pages.size) {
+                    val target = state.pageIndex.coerceIn(0, (state.pages.size - 1).coerceAtLeast(0))
+                    if (pagerState.currentPage != target) {
+                        pagerState.scrollToPage(target)
                     }
                 }
+                LaunchedEffect(pagerState) {
+                    snapshotFlow { pagerState.settledPage }
+                        .distinctUntilChanged()
+                        .collect { viewModel.setPageIndex(it) }
+                }
 
-                Text("正文", style = MaterialTheme.typography.labelLarge)
-                state.blocks.forEachIndexed { index, block ->
-                    when (block) {
-                        is WriteBlock.Paragraph -> {
-                            OutlinedTextField(
-                                value = block.text,
-                                onValueChange = { viewModel.updateParagraph(index, it) },
-                                placeholder = {
-                                    Text(
-                                        if (index == 0) "在这里写正文…" else "继续写…"
-                                    )
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 96.dp)
-                                    .onFocusChanged { focus ->
-                                        if (focus.isFocused) viewModel.setFocusedBlock(index)
-                                    },
-                                minLines = if (index == 0) 5 else 3
-                            )
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    beyondViewportPageCount = 0,
+                    userScrollEnabled = true
+                ) { page ->
+                    val pageInfo = state.pages.getOrNull(page)
+                    if (pageInfo == null || pageInfo.size <= 0) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("这一页还是空的，写点内容或插入图片吧")
                         }
-                        is WriteBlock.Image -> {
-                            ImageBlockEditor(
-                                path = block.path,
-                                widthPercent = block.widthPercent,
-                                file = viewModel.resolveImageFile(block.path),
-                                canMoveUp = index > 0,
-                                canMoveDown = index < state.blocks.lastIndex,
-                                enabled = !state.saving,
-                                onWidthChange = { viewModel.setImageWidth(index, it) },
-                                onMoveUp = { viewModel.moveBlock(index, -1) },
-                                onMoveDown = { viewModel.moveBlock(index, 1) },
-                                onDelete = { viewModel.removeBlock(index) },
-                                onFocus = { viewModel.setFocusedBlock(index) }
-                            )
-                        }
+                    } else {
+                        val pageBlocks = state.blocks.subList(pageInfo.startIndex, pageInfo.endExclusive)
+                        WritePageEditor(
+                            pageBlocks = pageBlocks,
+                            globalStartIndex = pageInfo.startIndex,
+                            enabled = !state.saving,
+                            resolveImage = viewModel::resolveImageFile,
+                            onParagraphChange = viewModel::updateParagraph,
+                            onFocus = viewModel::setFocusedBlock,
+                            onImageWidth = viewModel::setImageWidth,
+                            onDelete = viewModel::removeBlock,
+                            onMoveWithinPage = viewModel::moveWithinPage
+                        )
                     }
                 }
 
@@ -297,17 +306,79 @@ fun WriteScreen(
                         onCheckedChange = viewModel::setUploadToRemote,
                         enabled = !state.saving
                     )
-                    Column {
-                        Text("同时保存到远程仓库")
-                        Text(
-                            if (hasGithubToken) {
-                                "勾选后会上传到 GitHub，朋友同步就能看到"
-                            } else {
-                                "需先在书架设置里填写 Token"
+                    Text(
+                        if (hasGithubToken) "同时上传到远程仓库" else "上传需先配置 Token",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun WritePageEditor(
+    pageBlocks: List<WriteBlock>,
+    globalStartIndex: Int,
+    enabled: Boolean,
+    resolveImage: (String) -> java.io.File?,
+    onParagraphChange: (Int, String) -> Unit,
+    onFocus: (Int) -> Unit,
+    onImageWidth: (Int, Float) -> Unit,
+    onDelete: (Int) -> Unit,
+    onMoveWithinPage: (Int, Int) -> Unit
+) {
+    val lazyListState = rememberLazyListState()
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        onMoveWithinPage(from.index, to.index)
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        state = lazyListState,
+        contentPadding = PaddingValues(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        itemsIndexed(
+            items = pageBlocks,
+            key = { _, block -> block.id }
+        ) { localIndex, block ->
+            val globalIndex = globalStartIndex + localIndex
+            ReorderableItem(reorderableState, key = block.id) { isDragging ->
+                val elevation by animateDpAsState(if (isDragging) 6.dp else 0.dp, label = "drag")
+                when (block) {
+                    is WriteBlock.Paragraph -> {
+                        OutlinedTextField(
+                            value = block.text,
+                            onValueChange = { onParagraphChange(globalIndex, it) },
+                            placeholder = {
+                                Text(if (localIndex == 0) "在这一页写正文…" else "继续写…")
                             },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            enabled = enabled,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 120.dp)
+                                .onFocusChanged { if (it.isFocused) onFocus(globalIndex) },
+                            minLines = 4
                         )
+                    }
+                    is WriteBlock.Image -> {
+                        Card(
+                            elevation = CardDefaults.cardElevation(defaultElevation = elevation),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            ImageBlockEditor(
+                                path = block.path,
+                                widthPercent = block.widthPercent,
+                                file = resolveImage(block.path),
+                                enabled = enabled,
+                                dragHandleModifier = Modifier.longPressDraggableHandle(),
+                                onWidthChange = { onImageWidth(globalIndex, it) },
+                                onDelete = { onDelete(globalIndex) },
+                                onFocus = { onFocus(globalIndex) }
+                            )
+                        }
                     }
                 }
             }
@@ -320,42 +391,34 @@ private fun ImageBlockEditor(
     path: String,
     widthPercent: Float,
     file: java.io.File?,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
     enabled: Boolean,
+    dragHandleModifier: Modifier,
     onWidthChange: (Float) -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
     onDelete: () -> Unit,
     onFocus: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant,
-                shape = RoundedCornerShape(12.dp)
-            )
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("图片", style = MaterialTheme.typography.labelLarge)
-            Row {
-                IconButton(onClick = { onFocus(); onMoveUp() }, enabled = enabled && canMoveUp) {
-                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "上移")
-                }
-                IconButton(onClick = { onFocus(); onMoveDown() }, enabled = enabled && canMoveDown) {
-                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "下移")
-                }
-                IconButton(onClick = onDelete, enabled = enabled) {
-                    Icon(Icons.Default.Delete, contentDescription = "删除")
-                }
+            Icon(
+                imageVector = Icons.Default.DragHandle,
+                contentDescription = "长按拖动",
+                modifier = dragHandleModifier.padding(end = 8.dp)
+            )
+            Text(
+                "图片 · 长按左侧拖动",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = onDelete, enabled = enabled) {
+                Icon(Icons.Default.Delete, contentDescription = "删除")
             }
         }
         Box(
@@ -368,8 +431,9 @@ private fun ImageBlockEditor(
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxWidth(widthPercent.coerceIn(0.3f, 1f))
-                    .heightIn(max = 360.dp)
+                    .heightIn(max = 280.dp)
                     .clip(RoundedCornerShape(8.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
             )
         }
         Text(
@@ -386,5 +450,46 @@ private fun ImageBlockEditor(
             valueRange = 0.3f..1f,
             enabled = enabled
         )
+    }
+}
+
+@Composable
+private fun WritePageBar(
+    pageLabel: String,
+    pageTitle: String,
+    canPrev: Boolean,
+    canNext: Boolean,
+    onPrev: () -> Unit,
+    onNext: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        if (pageTitle.isNotBlank()) {
+            Text(
+                text = pageTitle,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onPrev, enabled = canPrev) {
+                Icon(Icons.AutoMirrored.Filled.NavigateBefore, contentDescription = "上一页")
+            }
+            Text(pageLabel, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            IconButton(onClick = onNext, enabled = canNext) {
+                Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = "下一页")
+            }
+        }
     }
 }

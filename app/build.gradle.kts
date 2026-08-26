@@ -13,8 +13,8 @@ android {
         applicationId = "com.kanshu.reader"
         minSdk = 24
         targetSdk = 35
-        versionCode = 24
-        versionName = "1.7.0"
+        versionCode = 25
+        versionName = "1.7.1"
 
         // 自动更新：指向 GitHub Releases latest API
         buildConfigField(
@@ -94,4 +94,6 @@ dependencies {
     implementation("org.jsoup:jsoup:1.18.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // Notion 风格块拖拽排序：https://github.com/Calvin-LL/Reorderable
+    implementation("sh.calvin.reorderable:reorderable:3.0.0")
 }
