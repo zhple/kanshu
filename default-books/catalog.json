@@ -65,7 +65,10 @@
       "author": "丹尼尔·凯斯",
       "file": "user-cdc9079bc9.epub",
       "format": "EPUB",
-      "folder": "仓库书"
+      "folder": "仓库书",
+      "chapterIndex": 6,
+      "scrollOffset": 2,
+      "lastReadAt": 1787531834318
     },
     {
       "id": "user-de7f8b8c4b",
