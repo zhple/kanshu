@@ -1,5 +1,5 @@
 {
-  "version": 7,
+  "version": 8,
   "folders": [
     "仓库书"
   ],
@@ -102,6 +102,17 @@
       "chapterIndex": 0,
       "scrollOffset": 0,
       "lastReadAt": 0
+    },
+    {
+      "id": "user-35613fc60e",
+      "title": "鸡尾酒配方",
+      "author": "PDF",
+      "file": "user-35613fc60e.pdf",
+      "format": "PDF",
+      "folder": "仓库书",
+      "chapterIndex": 3,
+      "scrollOffset": 0,
+      "lastReadAt": 1787330631419
     }
   ]
 }
