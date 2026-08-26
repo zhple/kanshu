@@ -3,6 +3,7 @@ package com.kanshu.reader.data.remote
 import android.content.Context
 import com.kanshu.reader.BuildConfig
 import com.kanshu.reader.data.repo.BookRepository
+import com.kanshu.reader.reader.WriteMarkers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -127,6 +128,28 @@ class DefaultBooksSync(
         runCatching {
             if (!copyFromAssets(name, dest)) {
                 downloadRemoteFile(name, dest)
+            }
+            if (dest.exists() && dest.length() > 0L) {
+                ensureWriteAssetsForDraft(dest)
+            }
+        }
+    }
+
+    /** 草稿里引用的插图：从 default-books/write_assets/ 拉取到本地。 */
+    private suspend fun ensureWriteAssetsForDraft(draftFile: File) {
+        val content = runCatching { draftFile.readText() }.getOrNull() ?: return
+        for (match in WriteMarkers.imageRegex.findAll(content)) {
+            val rel = match.groupValues[1].trim()
+            if (rel.isEmpty()) continue
+            if (bookRepository.resolveWriteImage(rel) != null) continue
+            val fileName = rel.substringAfterLast('/').substringAfterLast('\\')
+            if (fileName.isBlank()) continue
+            val dest = bookRepository.writeAssetFile(fileName)
+            if (dest.exists() && dest.length() > 0L) continue
+            runCatching {
+                if (!copyFromAssets("write_assets/$fileName", dest)) {
+                    downloadRemoteFile("write_assets/$fileName", dest)
+                }
             }
         }
     }

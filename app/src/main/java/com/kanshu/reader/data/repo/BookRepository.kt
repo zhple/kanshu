@@ -293,6 +293,8 @@ class BookRepository(
         return underAssets.takeIf { it.exists() }
     }
 
+    fun writeAssetFile(fileName: String): File = File(writeAssetsDir, fileName)
+
     suspend fun renameBook(id: Long, title: String) = withContext(Dispatchers.IO) {
         val trimmed = title.trim()
         require(trimmed.isNotEmpty()) { "书名不能为空" }

@@ -5,6 +5,7 @@ import com.kanshu.reader.BuildConfig
 import com.kanshu.reader.data.db.BookEntity
 import com.kanshu.reader.data.prefs.ThemePreferences
 import com.kanshu.reader.data.repo.BookRepository
+import com.kanshu.reader.reader.WriteMarkers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -73,6 +74,7 @@ class GithubBooksUploader(
                     contentBytes = draft.readBytes(),
                     message = "Add draft: ${book.title}"
                 )
+                uploadDraftAssets(token, draft)
             }
 
             val folderId = bookRepository.ensureFolder(folderName)
@@ -367,6 +369,27 @@ class GithubBooksUploader(
                 }
                 error("读取仓库失败 HTTP ${conn.responseCode}: ${body.take(200)}")
             }
+        }
+    }
+
+    private fun uploadDraftAssets(token: String, draft: java.io.File) {
+        val content = runCatching { draft.readText() }.getOrNull() ?: return
+        val uploaded = mutableSetOf<String>()
+        for (match in WriteMarkers.imageRegex.findAll(content)) {
+            val rel = match.groupValues[1].trim()
+            if (rel.isEmpty()) continue
+            val fileName = rel.substringAfterLast('/').substringAfterLast('\\')
+            if (fileName.isBlank() || fileName in uploaded) continue
+            val local = bookRepository.resolveWriteImage(rel) ?: continue
+            if (!local.exists() || local.length() <= 0L) continue
+            if (local.length() >= 40L * 1024 * 1024) continue
+            putContent(
+                token = token,
+                path = "default-books/write_assets/$fileName",
+                contentBytes = local.readBytes(),
+                message = "Upload write asset $fileName"
+            )
+            uploaded += fileName
         }
     }
 

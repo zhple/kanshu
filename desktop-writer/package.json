@@ -1,0 +1,26 @@
+{
+  "name": "kanshu-writer",
+  "version": "1.0.0",
+  "description": "看书桌面写作端 — 与 Android 共享 .draft.txt 格式",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --win portable"
+  },
+  "author": "kanshu",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.kanshu.writer",
+    "productName": "看书写作",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "src/**/*"],
+    "win": {
+      "target": ["portable"],
+      "artifactName": "kanshu-writer-${version}.exe"
+    }
+  }
+}
