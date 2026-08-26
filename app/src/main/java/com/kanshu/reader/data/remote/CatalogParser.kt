@@ -9,7 +9,11 @@ data class RemoteBookSpec(
     val file: String,
     val format: String,
     /** 远程分类名；空则视为「仓库书」 */
-    val folder: String = DEFAULT_REMOTE_FOLDER
+    val folder: String = DEFAULT_REMOTE_FOLDER,
+    /** 阅读进度（更新前备份 / 同步后恢复） */
+    val chapterIndex: Int = 0,
+    val scrollOffset: Int = 0,
+    val lastReadAt: Long = 0L
 )
 
 data class RemoteCatalog(
@@ -48,7 +52,10 @@ object CatalogParser {
                     author = item.optString("author").ifBlank { "仓库默认" },
                     file = file,
                     format = item.optString("format").ifBlank { "EPUB" },
-                    folder = folder
+                    folder = folder,
+                    chapterIndex = item.optInt("chapterIndex", 0).coerceAtLeast(0),
+                    scrollOffset = item.optInt("scrollOffset", 0).coerceAtLeast(0),
+                    lastReadAt = item.optLong("lastReadAt", 0L).coerceAtLeast(0L)
                 )
             }
         }

@@ -120,6 +120,8 @@ fun LibraryScreen(
     var updateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
     var updatingApk by remember { mutableStateOf(false) }
     var updateProgress by remember { mutableFloatStateOf(0f) }
+    var backingUpBeforeUpdate by remember { mutableStateOf(false) }
+    var updatePhaseMessage by remember { mutableStateOf<String?>(null) }
     var pendingInstallFile by remember { mutableStateOf<File?>(null) }
     var showCreateFolder by remember { mutableStateOf(false) }
     var folderNameInput by remember { mutableStateOf("") }
@@ -155,12 +157,33 @@ fun LibraryScreen(
 
     fun startInAppUpdate(info: AppUpdateInfo) {
         scope.launch {
+            if (hasGithubToken) {
+                backingUpBeforeUpdate = true
+                updatePhaseMessage = "正在备份书架与阅读进度到远程…"
+                val backup = viewModel.backupLibraryBeforeUpdate()
+                backingUpBeforeUpdate = false
+                backup.onSuccess { msg ->
+                    updatePhaseMessage = msg
+                    snackbarHostState.showSnackbar(msg)
+                }.onFailure { e ->
+                    updatePhaseMessage = null
+                    snackbarHostState.showSnackbar(
+                        "备份失败：${e.message ?: "未知错误"}，仍继续更新"
+                    )
+                }
+            } else {
+                snackbarHostState.showSnackbar(
+                    "未配置 GitHub Token：无法云备份。若安装需卸装重装，本机书与进度可能丢失"
+                )
+            }
             updatingApk = true
             updateProgress = 0f
+            updatePhaseMessage = "正在下载安装包…"
             val result = UpdateChecker.downloadApk(context, info) { p ->
                 updateProgress = p
             }
             updatingApk = false
+            updatePhaseMessage = null
             result.onSuccess { file ->
                 updateInfo = null
                 if (!UpdateChecker.canInstallPackages(context)) {
@@ -446,7 +469,9 @@ fun LibraryScreen(
                             "本地书 · 可改名，或上传到远程仓库供同步"
                         }
                     )
-                    if (book.format.equals("TXT", ignoreCase = true)) {
+                    if (book.format.equals("TXT", ignoreCase = true) ||
+                        book.format.equals("PDF", ignoreCase = true)
+                    ) {
                         TextButton(
                             onClick = {
                                 bookMenu = null
@@ -757,13 +782,16 @@ fun LibraryScreen(
     updateInfo?.let { info ->
         AlertDialog(
             onDismissRequest = {
-                if (!updatingApk) updateInfo = null
+                if (!updatingApk && !backingUpBeforeUpdate) updateInfo = null
             },
             title = { Text("发现新版本 v${info.versionName}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(info.releaseNotes.ifBlank { "有可用更新，建议升级。" })
-                    if (updatingApk) {
+                    if (backingUpBeforeUpdate) {
+                        Text(updatePhaseMessage ?: "正在备份…")
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    } else if (updatingApk) {
                         Text("正在下载安装包… ${(updateProgress * 100).toInt()}%")
                         LinearProgressIndicator(
                             progress = { updateProgress.coerceIn(0f, 1f) },
@@ -771,7 +799,11 @@ fun LibraryScreen(
                         )
                     } else {
                         Text(
-                            "将在应用内下载，完成后自动打开安装界面。系统会再确认一次安装。",
+                            if (hasGithubToken) {
+                                "点「立即更新」会先把本地书和阅读进度备份到远程，再下载安装。装好后同步仓库即可恢复。"
+                            } else {
+                                "建议先在设置里填写 GitHub Token，更新前才能云备份。否则卸装重装可能丢本地书与进度。"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -781,8 +813,16 @@ fun LibraryScreen(
             confirmButton = {
                 TextButton(
                     onClick = { startInAppUpdate(info) },
-                    enabled = !updatingApk
-                ) { Text(if (updatingApk) "下载中…" else "立即更新") }
+                    enabled = !updatingApk && !backingUpBeforeUpdate
+                ) {
+                    Text(
+                        when {
+                            backingUpBeforeUpdate -> "备份中…"
+                            updatingApk -> "下载中…"
+                            else -> "立即更新"
+                        }
+                    )
+                }
             },
             dismissButton = {
                 Row {
@@ -790,11 +830,11 @@ fun LibraryScreen(
                         onClick = {
                             UpdateChecker.openDownloadPage(context, info.apkUrl)
                         },
-                        enabled = !updatingApk
+                        enabled = !updatingApk && !backingUpBeforeUpdate
                     ) { Text("浏览器下载") }
                     TextButton(
                         onClick = { updateInfo = null },
-                        enabled = !updatingApk
+                        enabled = !updatingApk && !backingUpBeforeUpdate
                     ) { Text("稍后") }
                 }
             }

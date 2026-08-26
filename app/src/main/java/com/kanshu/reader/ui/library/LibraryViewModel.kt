@@ -85,10 +85,17 @@ class LibraryViewModel(
     fun syncDefaultBooks(manual: Boolean = false) {
         viewModelScope.launch {
             val result = defaultBooksSync.sync()
-            if (manual || result.added > 0 || result.failed > 0 || result.reassigned > 0) {
+            if (manual || result.added > 0 || result.failed > 0 || result.reassigned > 0 ||
+                result.message.contains("进度")
+            ) {
                 _syncMessage.value = result.message
             }
         }
+    }
+
+    /** 更新前把本地书与阅读进度备份到远程仓库。 */
+    suspend fun backupLibraryBeforeUpdate(): Result<String> {
+        return githubBooksUploader.backupLibrary()
     }
 
     fun consumeSyncMessage() {

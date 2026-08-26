@@ -35,6 +35,7 @@ class DefaultBooksSync(
         var skipped = 0
         var failed = 0
         var moved = 0
+        var progressRestored = 0
 
         for (spec in catalog.books) {
             val folderName = spec.folder.ifBlank { DEFAULT_REMOTE_FOLDER }
@@ -45,6 +46,10 @@ class DefaultBooksSync(
                     bookRepository.moveBook(existing.id, folderId)
                     moved++
                 }
+                if (applyRemoteProgress(existing.id, existing, spec)) {
+                    progressRestored++
+                }
+                ensureDraftDownloaded(spec)
                 skipped++
                 continue
             }
@@ -55,7 +60,7 @@ class DefaultBooksSync(
                     downloadRemoteFile(spec.file, dest)
                 }
                 require(dest.exists() && dest.length() > 0L) { "文件为空" }
-                bookRepository.insertRemoteBook(
+                val bookId = bookRepository.insertRemoteBook(
                     remoteId = spec.id,
                     title = spec.title,
                     author = spec.author,
@@ -63,6 +68,10 @@ class DefaultBooksSync(
                     fileName = destName,
                     folderId = folderId
                 )
+                ensureDraftDownloaded(spec)
+                if (applyRemoteProgress(bookId, null, spec)) {
+                    progressRestored++
+                }
             }.isSuccess
             if (ok) added++ else failed++
         }
@@ -73,13 +82,53 @@ class DefaultBooksSync(
             failed = failed,
             reassigned = moved,
             message = when {
+                added > 0 && progressRestored > 0 ->
+                    "已同步 $added 本仓库书，并恢复 $progressRestored 本阅读进度"
                 added > 0 && moved > 0 -> "已同步 $added 本仓库书，并更新 $moved 本分类"
                 added > 0 -> "已同步 $added 本仓库书"
+                progressRestored > 0 -> "已恢复 $progressRestored 本阅读进度"
                 moved > 0 -> "已更新 $moved 本仓库书的分类"
                 failed > 0 -> "有 $failed 本仓库书同步失败"
                 else -> "仓库书已是最新"
             }
         )
+    }
+
+    private suspend fun applyRemoteProgress(
+        bookId: Long,
+        existing: com.kanshu.reader.data.db.BookEntity?,
+        spec: RemoteBookSpec
+    ): Boolean {
+        if (spec.lastReadAt <= 0L && spec.chapterIndex == 0 && spec.scrollOffset == 0) {
+            return false
+        }
+        val shouldApply = when {
+            existing == null -> true
+            existing.lastReadAt < spec.lastReadAt -> true
+            existing.lastReadAt == 0L &&
+                (spec.chapterIndex > 0 || spec.scrollOffset > 0 || spec.lastReadAt > 0L) -> true
+            else -> false
+        }
+        if (!shouldApply) return false
+        bookRepository.updateProgress(
+            id = bookId,
+            chapterIndex = spec.chapterIndex,
+            scrollOffset = spec.scrollOffset,
+            lastReadAt = spec.lastReadAt.takeIf { it > 0L } ?: System.currentTimeMillis()
+        )
+        return true
+    }
+
+    private suspend fun ensureDraftDownloaded(spec: RemoteBookSpec) {
+        val book = bookRepository.getByRemoteId(spec.id) ?: return
+        val dest = bookRepository.resolveDraftFile(book)
+        if (dest.exists() && dest.length() > 0L) return
+        val name = "${spec.id}.draft.txt"
+        runCatching {
+            if (!copyFromAssets(name, dest)) {
+                downloadRemoteFile(name, dest)
+            }
+        }
     }
 
     private fun loadCatalog(): RemoteCatalog? {

@@ -57,9 +57,23 @@ class GithubBooksUploader(
                     author = book.author.ifBlank { "用户上传" },
                     file = remoteFileName,
                     format = book.format.uppercase(),
-                    folder = folderName
+                    folder = folderName,
+                    chapterIndex = book.chapterIndex,
+                    scrollOffset = book.scrollOffset,
+                    lastReadAt = book.lastReadAt
                 )
             )
+
+            // 写作草稿一并备份，更新后仍可编辑
+            val draft = bookRepository.resolveDraftFile(book)
+            if (draft.exists() && draft.length() > 0L) {
+                putContent(
+                    token = token,
+                    path = "default-books/$remoteId.draft.txt",
+                    contentBytes = draft.readBytes(),
+                    message = "Add draft: ${book.title}"
+                )
+            }
 
             val folderId = bookRepository.ensureFolder(folderName)
             bookRepository.markAsRemote(
@@ -71,6 +85,97 @@ class GithubBooksUploader(
             UploadResult(
                 remoteId = remoteId,
                 message = "已上传到仓库：${book.title}（$folderName）"
+            )
+        }
+    }
+
+    /**
+     * 更新前备份：本地未上传的书先上传，已在仓库的书同步阅读进度。
+     */
+    suspend fun backupLibrary(): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            requireToken()
+            val books = bookRepository.getAllBooksOnce()
+            if (books.isEmpty()) {
+                return@runCatching "书架为空，已跳过备份"
+            }
+            var uploaded = 0
+            var progressed = 0
+            val errors = mutableListOf<String>()
+            for (book in books) {
+                runCatching {
+                    if (book.remoteId.isNullOrBlank()) {
+                        uploadBook(book).getOrThrow()
+                        uploaded++
+                    } else {
+                        pushProgress(book)
+                        progressed++
+                    }
+                }.onFailure { e ->
+                    errors += "${book.title}：${e.message ?: "失败"}"
+                }
+            }
+            buildString {
+                append("已备份到远程：新上传 $uploaded 本，进度 $progressed 本")
+                if (errors.isNotEmpty()) {
+                    append("；失败 ${errors.size}")
+                    append("（${errors.take(2).joinToString("；")}）")
+                }
+            }
+        }
+    }
+
+    private suspend fun pushProgress(book: BookEntity) {
+        val token = requireToken()
+        val remoteId = book.remoteId?.takeIf { it.isNotBlank() }
+            ?: error("缺少远程 ID")
+        val folderName = resolveFolderName(book.folderId)
+        mutateCatalog(token, "Sync progress: ${book.title}") { root ->
+            ensureFoldersArray(root).also { arr ->
+                if (!(0 until arr.length()).any { arr.optString(it) == folderName }) {
+                    arr.put(folderName)
+                }
+            }
+            val books = root.optJSONArray("books") ?: JSONArray().also { root.put("books", it) }
+            var found = false
+            for (i in 0 until books.length()) {
+                val item = books.getJSONObject(i)
+                if (item.optString("id") == remoteId) {
+                    item.put("title", book.title)
+                    item.put("chapterIndex", book.chapterIndex)
+                    item.put("scrollOffset", book.scrollOffset)
+                    item.put("lastReadAt", book.lastReadAt)
+                    found = true
+                    break
+                }
+            }
+            if (!found) {
+                val ext = when {
+                    book.format.equals("PDF", true) -> ".pdf"
+                    book.format.equals("TXT", true) -> ".txt"
+                    else -> ".epub"
+                }
+                books.put(
+                    JSONObject()
+                        .put("id", remoteId)
+                        .put("title", book.title)
+                        .put("author", book.author.ifBlank { "用户上传" })
+                        .put("file", "$remoteId$ext")
+                        .put("format", book.format.uppercase())
+                        .put("folder", folderName)
+                        .put("chapterIndex", book.chapterIndex)
+                        .put("scrollOffset", book.scrollOffset)
+                        .put("lastReadAt", book.lastReadAt)
+                )
+            }
+        }
+        val draft = bookRepository.resolveDraftFile(book)
+        if (draft.exists() && draft.length() > 0L) {
+            putContent(
+                token = token,
+                path = "default-books/$remoteId.draft.txt",
+                contentBytes = draft.readBytes(),
+                message = "Update draft: ${book.title}"
             )
         }
     }
@@ -183,6 +288,9 @@ class GithubBooksUploader(
                     item.put("file", spec.file)
                     item.put("format", spec.format)
                     item.put("folder", spec.folder.ifBlank { DEFAULT_REMOTE_FOLDER })
+                    item.put("chapterIndex", spec.chapterIndex)
+                    item.put("scrollOffset", spec.scrollOffset)
+                    item.put("lastReadAt", spec.lastReadAt)
                     found = true
                     break
                 }
@@ -196,6 +304,9 @@ class GithubBooksUploader(
                         .put("file", spec.file)
                         .put("format", spec.format)
                         .put("folder", spec.folder.ifBlank { DEFAULT_REMOTE_FOLDER })
+                        .put("chapterIndex", spec.chapterIndex)
+                        .put("scrollOffset", spec.scrollOffset)
+                        .put("lastReadAt", spec.lastReadAt)
                 )
                 root.put("version", root.optInt("version", 1) + 1)
             }

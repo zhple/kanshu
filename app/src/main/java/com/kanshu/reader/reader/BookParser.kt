@@ -4,7 +4,10 @@ import org.jsoup.Jsoup
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.InputStream
+import java.nio.ByteBuffer
 import java.nio.charset.Charset
+import java.nio.charset.CodingErrorAction
+import java.nio.charset.StandardCharsets
 import java.util.zip.ZipFile
 import javax.xml.parsers.DocumentBuilderFactory
 
@@ -100,16 +103,31 @@ object BookParser {
 
     private fun readTextWithGuess(file: File): String {
         val bytes = file.readBytes()
-        // BOM
-        if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {
+        if (bytes.isEmpty()) return ""
+        // UTF-8 BOM
+        if (bytes.size >= 3 &&
+            bytes[0] == 0xEF.toByte() &&
+            bytes[1] == 0xBB.toByte() &&
+            bytes[2] == 0xBF.toByte()
+        ) {
             return String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
+        }
+        // UTF-16 BOM
+        if (bytes.size >= 2) {
+            if (bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte()) {
+                return String(bytes, 2, bytes.size - 2, Charsets.UTF_16LE)
+            }
+            if (bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte()) {
+                return String(bytes, 2, bytes.size - 2, Charsets.UTF_16BE)
+            }
+        }
+        // App 写作与多数现代 TXT 均为 UTF-8；合法 UTF-8 直接采用，避免短文被误判成 GBK/UTF-16 乱码
+        if (isValidUtf8(bytes)) {
+            return String(bytes, Charsets.UTF_8)
         }
         val candidates = listOf(
             Charset.forName("GB18030"),
-            Charset.forName("GBK"),
-            Charsets.UTF_8,
-            Charsets.UTF_16LE,
-            Charsets.UTF_16BE
+            Charset.forName("GBK")
         )
         var best: Pair<String, Int>? = null
         for (charset in candidates) {
@@ -124,6 +142,18 @@ object BookParser {
             }
         }
         return best?.first ?: String(bytes, Charsets.UTF_8)
+    }
+
+    private fun isValidUtf8(bytes: ByteArray): Boolean {
+        val decoder = StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+        return try {
+            decoder.decode(ByteBuffer.wrap(bytes))
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun scoreDecodedText(text: String): Int {

@@ -32,6 +32,8 @@ import androidx.compose.material.icons.automirrored.filled.NavigateBefore
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -39,12 +41,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +58,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,6 +85,9 @@ fun ReaderScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    var showJumpDialog by remember { mutableStateOf(false) }
+    var jumpInput by remember { mutableStateOf("") }
+    var jumpError by remember { mutableStateOf<String?>(null) }
     val palette = readerPalette(themeMode)
     val density = LocalDensity.current
 
@@ -229,12 +239,63 @@ fun ReaderScreen(
                             chapterLabel = chapterLabel,
                             onPrev = viewModel::previousPage,
                             onNext = viewModel::nextPage,
+                            onPageClick = {
+                                if (state.pages.isNotEmpty()) {
+                                    jumpInput = (state.pageIndex + 1).toString()
+                                    jumpError = null
+                                    showJumpDialog = true
+                                }
+                            },
                             modifier = Modifier.align(Alignment.BottomCenter)
                         )
                     }
                 }
             }
         }
+    }
+
+    if (showJumpDialog && state.pages.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { showJumpDialog = false },
+            title = { Text("跳转到页码") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("共 ${state.pages.size} 页，当前第 ${state.pageIndex + 1} 页")
+                    OutlinedTextField(
+                        value = jumpInput,
+                        onValueChange = {
+                            jumpInput = it.filter { ch -> ch.isDigit() }.take(6)
+                            jumpError = null
+                        },
+                        singleLine = true,
+                        label = { Text("页码") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        isError = jumpError != null,
+                        supportingText = jumpError?.let { { Text(it) } },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val page = jumpInput.toIntOrNull()
+                        val max = state.pages.size
+                        when {
+                            page == null || page < 1 || page > max ->
+                                jumpError = "请输入 1–$max 之间的页码"
+                            else -> {
+                                viewModel.setPageIndex(page - 1)
+                                showJumpDialog = false
+                            }
+                        }
+                    }
+                ) { Text("跳转") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showJumpDialog = false }) { Text("取消") }
+            }
+        )
     }
 
     if (state.showToc) {
@@ -391,6 +452,7 @@ private fun ReaderBottomBar(
     chapterLabel: String,
     onPrev: () -> Unit,
     onNext: () -> Unit,
+    onPageClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -418,7 +480,9 @@ private fun ReaderBottomBar(
             IconButton(onClick = onPrev, enabled = canPrev) {
                 Icon(Icons.AutoMirrored.Filled.NavigateBefore, contentDescription = "上一页")
             }
-            Text(pageLabel, style = MaterialTheme.typography.labelLarge)
+            TextButton(onClick = onPageClick) {
+                Text(pageLabel, style = MaterialTheme.typography.labelLarge)
+            }
             IconButton(onClick = onNext, enabled = canNext) {
                 Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = "下一页")
             }

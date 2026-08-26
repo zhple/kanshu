@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -26,10 +28,12 @@ import androidx.compose.material.icons.automirrored.filled.NavigateBefore
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,6 +50,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -62,6 +67,9 @@ fun PdfReaderScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    var showJumpDialog by remember { mutableStateOf(false) }
+    var jumpInput by remember { mutableStateOf("") }
+    var jumpError by remember { mutableStateOf<String?>(null) }
     val palette = readerPalette(themeMode)
     val density = LocalDensity.current
     val screenWidthPx = with(density) {
@@ -162,11 +170,60 @@ fun PdfReaderScreen(
                         pageLabel = "${state.pageIndex + 1} / ${state.pageCount}",
                         onPrev = viewModel::previousPage,
                         onNext = viewModel::nextPage,
+                        onPageClick = {
+                            jumpInput = (state.pageIndex + 1).toString()
+                            jumpError = null
+                            showJumpDialog = true
+                        },
                         modifier = Modifier.align(Alignment.BottomCenter)
                     )
                 }
             }
         }
+    }
+
+    if (showJumpDialog && state.pageCount > 0) {
+        AlertDialog(
+            onDismissRequest = { showJumpDialog = false },
+            title = { Text("跳转到页码") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("共 ${state.pageCount} 页，当前第 ${state.pageIndex + 1} 页")
+                    OutlinedTextField(
+                        value = jumpInput,
+                        onValueChange = {
+                            jumpInput = it.filter { ch -> ch.isDigit() }.take(6)
+                            jumpError = null
+                        },
+                        singleLine = true,
+                        label = { Text("页码") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        isError = jumpError != null,
+                        supportingText = jumpError?.let { { Text(it) } },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val page = jumpInput.toIntOrNull()
+                        val max = state.pageCount
+                        when {
+                            page == null || page < 1 || page > max ->
+                                jumpError = "请输入 1–$max 之间的页码"
+                            else -> {
+                                viewModel.setPageIndex(page - 1)
+                                showJumpDialog = false
+                            }
+                        }
+                    }
+                ) { Text("跳转") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showJumpDialog = false }) { Text("取消") }
+            }
+        )
     }
 }
 
@@ -247,6 +304,7 @@ private fun PdfBottomBar(
     pageLabel: String,
     onPrev: () -> Unit,
     onNext: () -> Unit,
+    onPageClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -261,7 +319,9 @@ private fun PdfBottomBar(
         IconButton(onClick = onPrev, enabled = canPrev) {
             Icon(Icons.AutoMirrored.Filled.NavigateBefore, contentDescription = "上一页")
         }
-        Text(pageLabel, style = MaterialTheme.typography.labelLarge)
+        TextButton(onClick = onPageClick) {
+            Text(pageLabel, style = MaterialTheme.typography.labelLarge)
+        }
         IconButton(onClick = onNext, enabled = canNext) {
             Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = "下一页")
         }
