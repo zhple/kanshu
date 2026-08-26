@@ -54,7 +54,10 @@
       "author": "仓库默认",
       "file": "txt-1.txt",
       "format": "TXT",
-      "folder": "仓库书"
+      "folder": "仓库书",
+      "chapterIndex": 0,
+      "scrollOffset": 1,
+      "lastReadAt": 1786617052509
     },
     {
       "id": "user-cdc9079bc9",
