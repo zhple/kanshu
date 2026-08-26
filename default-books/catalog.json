@@ -1,5 +1,5 @@
 {
-  "version": 9,
+  "version": 10,
   "folders": [
     "仓库书"
   ],
@@ -124,6 +124,17 @@
       "chapterIndex": 1,
       "scrollOffset": 0,
       "lastReadAt": 1787330636002
+    },
+    {
+      "id": "user-9aa9086fbd",
+      "title": "随便写点",
+      "author": "我写的",
+      "file": "user-9aa9086fbd.txt",
+      "format": "TXT",
+      "folder": "仓库书",
+      "chapterIndex": 0,
+      "scrollOffset": 0,
+      "lastReadAt": 1787729685899
     }
   ]
 }
