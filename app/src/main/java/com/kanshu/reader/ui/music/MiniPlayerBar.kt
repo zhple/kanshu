@@ -1,11 +1,15 @@
 package com.kanshu.reader.ui.music
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,7 +36,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -52,55 +55,60 @@ fun MiniPlayerBar(
     modifier: Modifier = Modifier
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
-    if (!state.visible) return
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f),
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.96f)
+    AnimatedVisibility(
+        visible = state.visible,
+        modifier = modifier,
+        enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(tween(320)),
+        exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(tween(220))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+                        )
                     )
                 )
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-                        Color.Transparent
-                    )
-                ),
-                shape = RoundedCornerShape(20.dp)
-            )
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-    ) {
-        CollapsedRow(
-            state = state,
-            onToggleExpand = controller::toggleExpanded,
-            onTogglePlay = controller::togglePlayPause,
-            onDismiss = controller::dismissMiniBar,
-            onOpenPlaylist = onOpenPlaylist
-        )
-        AnimatedVisibility(
-            visible = state.expanded,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
+                .border(
+                    width = 1.dp,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f),
+                            Color.Transparent
+                        )
+                    ),
+                    shape = RoundedCornerShape(20.dp)
+                )
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            ExpandedPanel(
+            CollapsedRow(
                 state = state,
-                onSeek = controller::seekTo,
-                onPrev = controller::previous,
-                onNext = controller::next,
-                onCollapse = { controller.setExpanded(false) },
+                onToggleExpand = controller::toggleExpanded,
+                onTogglePlay = controller::togglePlayPause,
+                onDismiss = controller::dismissMiniBar,
                 onOpenPlaylist = onOpenPlaylist
             )
+            AnimatedVisibility(
+                visible = state.expanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                ExpandedPanel(
+                    state = state,
+                    onSeek = controller::seekTo,
+                    onPrev = controller::previous,
+                    onNext = controller::next,
+                    onCollapse = { controller.setExpanded(false) },
+                    onOpenPlaylist = onOpenPlaylist
+                )
+            }
         }
     }
 }

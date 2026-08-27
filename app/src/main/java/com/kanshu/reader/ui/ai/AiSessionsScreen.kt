@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -50,6 +51,7 @@ import androidx.compose.material.icons.filled.Forum
 import com.kanshu.reader.data.db.AiSessionEntity
 import com.kanshu.reader.ui.components.KanshuEmptyState
 import com.kanshu.reader.ui.components.kanshuListCard
+import com.kanshu.reader.ui.components.kanshuPressScale
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -288,16 +290,19 @@ fun AiSessionsScreen(
 private fun SessionRow(
     session: AiSessionEntity,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     val time = remember(session.updatedAt) {
         SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(session.updatedAt))
     }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            .kanshuPressScale(interactionSource)
             .kanshuListCard()
-            .clickable(onClick = onClick)
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

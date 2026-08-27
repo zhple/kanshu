@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -48,6 +49,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kanshu.reader.data.db.TrackEntity
 import com.kanshu.reader.ui.components.KanshuEmptyState
 import com.kanshu.reader.ui.components.kanshuListCard
+import com.kanshu.reader.ui.components.kanshuPressScale
 import com.kanshu.reader.data.remote.GithubMusicUploader
 import com.kanshu.reader.data.remote.MusicSync
 import com.kanshu.reader.data.repo.MusicRepository
@@ -274,13 +276,16 @@ private fun TrackRow(
     track: TrackEntity,
     onPlay: () -> Unit,
     onUpload: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            .kanshuPressScale(interactionSource)
             .kanshuListCard()
-            .clickable(onClick = onPlay)
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onPlay)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -89,6 +90,7 @@ import com.kanshu.reader.data.prefs.AppThemeMode
 import com.kanshu.reader.ui.components.KanshuEmptyState
 import com.kanshu.reader.ui.components.KanshuHeroBanner
 import com.kanshu.reader.ui.components.kanshuListCard
+import com.kanshu.reader.ui.components.kanshuPressScale
 import com.kanshu.reader.update.AppUpdateInfo
 import com.kanshu.reader.update.UpdateChecker
 import kotlinx.coroutines.launch
@@ -299,7 +301,7 @@ fun LibraryScreen(
                             text = if (inFolder) {
                                 "文件夹 · ${if (themeMode == AppThemeMode.DAY) "白天" else "黑夜"}"
                             } else {
-                                "静读 · 书写 · 共享"
+                                "海边咖啡馆 · 静读时光"
                             },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -342,7 +344,7 @@ fun LibraryScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         },
@@ -437,7 +439,7 @@ fun LibraryScreen(
                             item {
                                 KanshuHeroBanner(
                                     title = "看书",
-                                    subtitle = "${books.size} 本书 · ${if (themeMode == AppThemeMode.DAY) "昼读" else "夜读"}"
+                                    subtitle = "${books.size} 本书 · ${if (themeMode == AppThemeMode.DAY) "午后阳光" else "暮色海岸"}"
                                 )
                             }
                         }
@@ -871,13 +873,21 @@ private fun FolderRow(
     folder: FolderEntity,
     bookCount: Int,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            .kanshuPressScale(interactionSource)
             .kanshuListCard()
-            .combinedClickable(onClick = onClick, onLongClick = onDelete)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+                onLongClick = onDelete
+            )
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -885,7 +895,14 @@ private fun FolderRow(
             modifier = Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.secondary),
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.secondary,
+                            MaterialTheme.colorScheme.secondaryContainer
+                        )
+                    )
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -920,8 +937,10 @@ private fun FolderRow(
 private fun BookRow(
     book: BookEntity,
     onClick: () -> Unit,
-    onMenu: () -> Unit
+    onMenu: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     val isPdf = book.format.equals("PDF", ignoreCase = true)
     val icon: ImageVector = if (isPdf) {
         Icons.Default.PictureAsPdf
@@ -929,20 +948,26 @@ private fun BookRow(
         Icons.AutoMirrored.Filled.MenuBook
     }
     val coverBrush = if (isPdf) {
-        Brush.linearGradient(listOf(Color(0xFF8B6914), Color(0xFFD4A84B)))
+        Brush.linearGradient(listOf(Color(0xFFB8845A), Color(0xFFE0C4A0)))
     } else {
         Brush.linearGradient(
             listOf(
                 MaterialTheme.colorScheme.primary,
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)
+                MaterialTheme.colorScheme.tertiary
             )
         )
     }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            .kanshuPressScale(interactionSource)
             .kanshuListCard()
-            .combinedClickable(onClick = onClick, onLongClick = onMenu)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+                onLongClick = onMenu
+            )
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
