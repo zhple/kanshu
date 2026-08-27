@@ -306,7 +306,7 @@ fun LibraryScreen(
                             text = if (inFolder) {
                                 "文件夹 · ${if (themeMode == AppThemeMode.DAY) "白天" else "黑夜"}"
                             } else {
-                                "海边咖啡馆 · 静读时光"
+                                "简约 · 静读"
                             },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -452,9 +452,9 @@ fun LibraryScreen(
                             item {
                                 KanshuPremiumHero(
                                     title = "看书",
-                                    subtitle = "海边咖啡馆 · 静读时光",
+                                    subtitle = "你的私人书架",
                                     bookCount = books.size,
-                                    moodLabel = if (themeMode == AppThemeMode.DAY) "午后阳光" else "暮色海岸"
+                                    moodLabel = if (themeMode == AppThemeMode.DAY) "白天" else "夜间"
                                 )
                             }
                         }
@@ -965,12 +965,17 @@ private fun BookRow(
         Icons.AutoMirrored.Filled.MenuBook
     }
     val coverBrush = if (isPdf) {
-        Brush.linearGradient(listOf(Color(0xFFB8845A), Color(0xFFE0C4A0)))
+        Brush.linearGradient(
+            listOf(
+                MaterialTheme.colorScheme.secondary,
+                MaterialTheme.colorScheme.secondary.copy(alpha = 0.82f)
+            )
+        )
     } else {
         Brush.linearGradient(
             listOf(
                 MaterialTheme.colorScheme.primary,
-                MaterialTheme.colorScheme.tertiary
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
             )
         )
     }

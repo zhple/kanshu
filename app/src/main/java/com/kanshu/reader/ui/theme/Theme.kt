@@ -7,50 +7,50 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.kanshu.reader.data.prefs.AppThemeMode
 
-/** 高级感日间：亚麻底 + 深青蓝主色 + 香槟金点缀 */
+/** 简约日间：暖灰石底 + 低饱和 slate，避免过曝白 */
 private val DayColors = lightColorScheme(
-    primary = Color(0xFF4A6B7C),
-    onPrimary = Color(0xFFFDFCFA),
-    primaryContainer = Color(0xFFD8E8F0),
-    onPrimaryContainer = Color(0xFF1A2E38),
-    secondary = Color(0xFFC4A574),
-    onSecondary = Color(0xFF2A2010),
-    secondaryContainer = Color(0xFFF0E6D4),
-    onSecondaryContainer = Color(0xFF3D3020),
-    tertiary = Color(0xFF7A9E8E),
-    onTertiary = Color(0xFF1A2820),
-    tertiaryContainer = Color(0xFFDCEADF),
-    onTertiaryContainer = Color(0xFF243528),
-    background = Color(0xFFF3EEE6),
-    onBackground = Color(0xFF2C2620),
-    surface = Color(0xFFFDFCFA),
-    onSurface = Color(0xFF2C2620),
-    surfaceVariant = Color(0xFFE8E0D4),
-    onSurfaceVariant = Color(0xFF6B6258),
-    outline = Color(0xFFC8BDB0)
+    primary = Color(0xFF5C6B73),
+    onPrimary = Color(0xFFF5F4F2),
+    primaryContainer = Color(0xFFE4E8EA),
+    onPrimaryContainer = Color(0xFF2A3238),
+    secondary = Color(0xFF8A8178),
+    onSecondary = Color(0xFFF5F4F2),
+    secondaryContainer = Color(0xFFEBE8E4),
+    onSecondaryContainer = Color(0xFF3A3530),
+    tertiary = Color(0xFF7A8E86),
+    onTertiary = Color(0xFFF5F4F2),
+    tertiaryContainer = Color(0xFFE6EBE9),
+    onTertiaryContainer = Color(0xFF2A3230),
+    background = Color(0xFFF2F0ED),
+    onBackground = Color(0xFF1F1F1F),
+    surface = Color(0xFFFAFAF8),
+    onSurface = Color(0xFF1F1F1F),
+    surfaceVariant = Color(0xFFE8E6E2),
+    onSurfaceVariant = Color(0xFF6B6660),
+    outline = Color(0xFFD8D4CE)
 )
 
-/** 高级感夜间：深墨蓝 + 月光银 + 暖金灯光 */
+/** 简约夜间：深石墨 + 柔灰文字，无高亮蓝光 */
 private val NightColors = darkColorScheme(
-    primary = Color(0xFFB8D4E8),
-    onPrimary = Color(0xFF152028),
-    primaryContainer = Color(0xFF2A3D4C),
-    onPrimaryContainer = Color(0xFFD8ECF8),
-    secondary = Color(0xFFD4B88A),
-    onSecondary = Color(0xFF2A2010),
-    secondaryContainer = Color(0xFF4A3A28),
-    onSecondaryContainer = Color(0xFFF0E4D0),
-    tertiary = Color(0xFFA8C4B8),
-    onTertiary = Color(0xFF1A2820),
-    tertiaryContainer = Color(0xFF344840),
-    onTertiaryContainer = Color(0xFFD8EADC),
-    background = Color(0xFF141C24),
-    onBackground = Color(0xFFE8E4DC),
-    surface = Color(0xFF1C2630),
-    onSurface = Color(0xFFE8E4DC),
-    surfaceVariant = Color(0xFF2E3844),
-    onSurfaceVariant = Color(0xFFB8B0A4),
-    outline = Color(0xFF4A5560)
+    primary = Color(0xFFA8B5BC),
+    onPrimary = Color(0xFF1A1E20),
+    primaryContainer = Color(0xFF2E363A),
+    onPrimaryContainer = Color(0xFFD8DEE2),
+    secondary = Color(0xFFB0A89E),
+    onSecondary = Color(0xFF1E1C18),
+    secondaryContainer = Color(0xFF3A3630),
+    onSecondaryContainer = Color(0xFFE4E0DA),
+    tertiary = Color(0xFF98A8A0),
+    onTertiary = Color(0xFF1A201E),
+    tertiaryContainer = Color(0xFF323A36),
+    onTertiaryContainer = Color(0xFFD8E0DC),
+    background = Color(0xFF121212),
+    onBackground = Color(0xFFE8E6E2),
+    surface = Color(0xFF1A1A1A),
+    onSurface = Color(0xFFE8E6E2),
+    surfaceVariant = Color(0xFF2A2A2A),
+    onSurfaceVariant = Color(0xFFA8A4A0),
+    outline = Color(0xFF444444)
 )
 
 data class ReaderPalette(
@@ -62,16 +62,16 @@ data class ReaderPalette(
 
 fun readerPalette(mode: AppThemeMode): ReaderPalette = when (mode) {
     AppThemeMode.DAY -> ReaderPalette(
-        background = Color(0xFFF3EEE6),
-        text = Color(0xFF2C2620),
-        muted = Color(0xFF7A7268),
-        accent = Color(0xFF4A6B7C)
+        background = Color(0xFFF2F0ED),
+        text = Color(0xFF1F1F1F),
+        muted = Color(0xFF7A7570),
+        accent = Color(0xFF5C6B73)
     )
     AppThemeMode.NIGHT -> ReaderPalette(
-        background = Color(0xFF121820),
-        text = Color(0xFFE8E4DC),
-        muted = Color(0xFF9A9488),
-        accent = Color(0xFFB8D4E8)
+        background = Color(0xFF121212),
+        text = Color(0xFFE8E6E2),
+        muted = Color(0xFF989490),
+        accent = Color(0xFFA8B5BC)
     )
 }
 

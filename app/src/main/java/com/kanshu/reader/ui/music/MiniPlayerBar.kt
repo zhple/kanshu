@@ -1,11 +1,6 @@
 package com.kanshu.reader.ui.music
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -42,9 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,52 +54,29 @@ fun MiniPlayerBar(
     modifier: Modifier = Modifier
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
-    val infinite = rememberInfiniteTransition(label = "miniGlow")
-    val glow by infinite.animateFloat(
-        initialValue = 0.92f,
-        targetValue = 1.06f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "miniGlowValue"
-    )
     AnimatedVisibility(
         visible = state.visible,
         modifier = modifier,
-        enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(tween(320)),
-        exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(tween(220))
+        enter = slideInVertically(initialOffsetY = { it / 3 }) + fadeIn(tween(280)),
+        exit = slideOutVertically(targetOffsetY = { it / 3 }) + fadeOut(tween(200))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
-                        )
-                    )
-                )
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .shadow(2.dp, RoundedCornerShape(14.dp), clip = false)
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surface)
                 .border(
-                    width = 1.dp,
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f),
-                            Color.Transparent
-                        )
-                    ),
-                    shape = RoundedCornerShape(20.dp)
+                    0.5.dp,
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+                    RoundedCornerShape(14.dp)
                 )
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             CollapsedRow(
                 state = state,
-                glow = if (state.playing) glow else 1f,
                 onToggleExpand = controller::toggleExpanded,
                 onTogglePlay = controller::togglePlayPause,
                 onDismiss = controller::dismissMiniBar,
@@ -133,7 +103,6 @@ fun MiniPlayerBar(
 @Composable
 private fun CollapsedRow(
     state: MusicPlayerState,
-    glow: Float,
     onToggleExpand: () -> Unit,
     onTogglePlay: () -> Unit,
     onDismiss: () -> Unit,
@@ -151,7 +120,7 @@ private fun CollapsedRow(
             Text(
                 text = state.title.ifBlank { "未在播放" },
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -163,13 +132,7 @@ private fun CollapsedRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        IconButton(
-            onClick = onTogglePlay,
-            modifier = Modifier.graphicsLayer {
-                scaleX = glow
-                scaleY = glow
-            }
-        ) {
+        IconButton(onClick = onTogglePlay) {
             Icon(
                 imageVector = if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                 contentDescription = if (state.playing) "暂停" else "播放"
