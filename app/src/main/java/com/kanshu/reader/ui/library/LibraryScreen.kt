@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -89,10 +89,13 @@ import com.kanshu.reader.data.db.FolderEntity
 import com.kanshu.reader.data.prefs.AppThemeMode
 import com.kanshu.reader.ui.components.KanshuAmbientBackground
 import com.kanshu.reader.ui.components.KanshuEmptyState
-import com.kanshu.reader.ui.components.KanshuHeroBanner
+import com.kanshu.reader.ui.components.KanshuPremiumHero
+import com.kanshu.reader.ui.components.PremiumBookCover
 import com.kanshu.reader.ui.components.kanshuFloat
-import com.kanshu.reader.ui.components.kanshuListCard
+import com.kanshu.reader.ui.components.kanshuPremiumCard
 import com.kanshu.reader.ui.components.kanshuPressScale
+import com.kanshu.reader.ui.components.kanshuStaggerEnter
+import com.kanshu.reader.ui.components.kanshu3DTilt
 import com.kanshu.reader.update.AppUpdateInfo
 import com.kanshu.reader.update.UpdateChecker
 import kotlinx.coroutines.launch
@@ -447,27 +450,31 @@ fun LibraryScreen(
                     ) {
                         if (!inFolder) {
                             item {
-                                KanshuHeroBanner(
+                                KanshuPremiumHero(
                                     title = "看书",
-                                    subtitle = "${books.size} 本书 · ${if (themeMode == AppThemeMode.DAY) "午后阳光" else "暮色海岸"}"
+                                    subtitle = "海边咖啡馆 · 静读时光",
+                                    bookCount = books.size,
+                                    moodLabel = if (themeMode == AppThemeMode.DAY) "午后阳光" else "暮色海岸"
                                 )
                             }
                         }
                         if (!inFolder && sourceFilter != BookSourceFilter.LOCAL) {
-                            items(folders, key = { "f-${it.id}" }) { folder ->
+                            itemsIndexed(folders, key = { _, f -> "f-${f.id}" }) { index, folder ->
                                 FolderRow(
                                     folder = folder,
                                     bookCount = viewModel.bookCountInFolder(folder.id, allBooks),
                                     onClick = { viewModel.openFolder(folder) },
-                                    onDelete = { pendingDeleteFolder = folder }
+                                    onDelete = { pendingDeleteFolder = folder },
+                                    modifier = Modifier.kanshuStaggerEnter(index)
                                 )
                             }
                         }
-                        items(books, key = { "b-${it.id}" }) { book ->
+                        itemsIndexed(books, key = { _, b -> "b-${b.id}" }) { index, book ->
                             BookRow(
                                 book = book,
                                 onClick = { onOpenBook(book.id) },
-                                onMenu = { bookMenu = book }
+                                onMenu = { bookMenu = book },
+                                modifier = Modifier.kanshuStaggerEnter(index + folders.size)
                             )
                         }
                     }
@@ -891,7 +898,7 @@ private fun FolderRow(
         modifier = modifier
             .fillMaxWidth()
             .kanshuPressScale(interactionSource)
-            .kanshuListCard()
+            .kanshuPremiumCard()
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -971,30 +978,22 @@ private fun BookRow(
         modifier = modifier
             .fillMaxWidth()
             .kanshuPressScale(interactionSource)
-            .kanshuListCard()
+            .kanshuPremiumCard()
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick,
                 onLongClick = onMenu
             )
-            .padding(14.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(coverBrush),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimary
-            )
-        }
-        Spacer(Modifier.width(14.dp))
+        PremiumBookCover(
+            icon = icon,
+            gradient = coverBrush,
+            modifier = Modifier.kanshu3DTilt(interactionSource)
+        )
+        Spacer(Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(

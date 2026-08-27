@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -52,8 +52,9 @@ import com.kanshu.reader.data.db.AiSessionEntity
 import com.kanshu.reader.ui.components.KanshuAmbientBackground
 import com.kanshu.reader.ui.components.KanshuEmptyState
 import com.kanshu.reader.ui.components.kanshuFloat
-import com.kanshu.reader.ui.components.kanshuListCard
+import com.kanshu.reader.ui.components.kanshuPremiumCard
 import com.kanshu.reader.ui.components.kanshuPressScale
+import com.kanshu.reader.ui.components.kanshuStaggerEnter
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -153,11 +154,12 @@ fun AiSessionsScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(sessions, key = { it.id }) { session ->
+                itemsIndexed(sessions, key = { _, s -> s.id }) { index, session ->
                     SessionRow(
                         session = session,
                         onClick = { onOpenSession(session.id) },
-                        onDelete = { pendingDelete = session }
+                        onDelete = { pendingDelete = session },
+                        modifier = Modifier.kanshuStaggerEnter(index)
                     )
                 }
             }
@@ -306,7 +308,7 @@ private fun SessionRow(
         modifier = modifier
             .fillMaxWidth()
             .kanshuPressScale(interactionSource)
-            .kanshuListCard()
+            .kanshuPremiumCard()
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically

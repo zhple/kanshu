@@ -50,8 +50,9 @@ import com.kanshu.reader.data.db.TrackEntity
 import com.kanshu.reader.ui.components.KanshuAmbientBackground
 import com.kanshu.reader.ui.components.KanshuEmptyState
 import com.kanshu.reader.ui.components.kanshuFloat
-import com.kanshu.reader.ui.components.kanshuListCard
+import com.kanshu.reader.ui.components.kanshuPremiumCard
 import com.kanshu.reader.ui.components.kanshuPressScale
+import com.kanshu.reader.ui.components.kanshuStaggerEnter
 import com.kanshu.reader.data.remote.GithubMusicUploader
 import com.kanshu.reader.data.remote.MusicSync
 import com.kanshu.reader.data.repo.MusicRepository
@@ -267,7 +268,8 @@ fun MusicScreen(
                         track = track,
                         onPlay = { viewModel.playAll(track) },
                         onUpload = { viewModel.upload(track) },
-                        onDelete = { viewModel.delete(track) }
+                        onDelete = { viewModel.delete(track) },
+                        modifier = Modifier.kanshuStaggerEnter(index)
                     )
                 }
             }
@@ -290,7 +292,7 @@ private fun TrackRow(
         modifier = modifier
             .fillMaxWidth()
             .kanshuPressScale(interactionSource)
-            .kanshuListCard()
+            .kanshuPremiumCard()
             .clickable(interactionSource = interactionSource, indication = null, onClick = onPlay)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically

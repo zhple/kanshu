@@ -7,50 +7,50 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.kanshu.reader.data.prefs.AppThemeMode
 
-/** 白天：海边咖啡馆 —— 拿铁暖底 + 柔和海蓝点缀 */
+/** 高级感日间：亚麻底 + 深青蓝主色 + 香槟金点缀 */
 private val DayColors = lightColorScheme(
-    primary = Color(0xFF6A9FB5),
-    onPrimary = Color(0xFFFFFBF7),
-    primaryContainer = Color(0xFFD4E8F0),
-    onPrimaryContainer = Color(0xFF1E3A47),
-    secondary = Color(0xFFB8845A),
-    onSecondary = Color(0xFFFFFBF7),
-    secondaryContainer = Color(0xFFF0E0CE),
-    onSecondaryContainer = Color(0xFF4A3420),
-    tertiary = Color(0xFF8FAF9A),
-    onTertiary = Color(0xFF1A2E24),
+    primary = Color(0xFF4A6B7C),
+    onPrimary = Color(0xFFFDFCFA),
+    primaryContainer = Color(0xFFD8E8F0),
+    onPrimaryContainer = Color(0xFF1A2E38),
+    secondary = Color(0xFFC4A574),
+    onSecondary = Color(0xFF2A2010),
+    secondaryContainer = Color(0xFFF0E6D4),
+    onSecondaryContainer = Color(0xFF3D3020),
+    tertiary = Color(0xFF7A9E8E),
+    onTertiary = Color(0xFF1A2820),
     tertiaryContainer = Color(0xFFDCEADF),
     onTertiaryContainer = Color(0xFF243528),
-    background = Color(0xFFF4EBE0),
-    onBackground = Color(0xFF4A3F35),
-    surface = Color(0xFFFFFAF6),
-    onSurface = Color(0xFF4A3F35),
-    surfaceVariant = Color(0xFFE6D9CC),
-    onSurfaceVariant = Color(0xFF7A6E62),
-    outline = Color(0xFFD4C4B4)
+    background = Color(0xFFF3EEE6),
+    onBackground = Color(0xFF2C2620),
+    surface = Color(0xFFFDFCFA),
+    onSurface = Color(0xFF2C2620),
+    surfaceVariant = Color(0xFFE8E0D4),
+    onSurfaceVariant = Color(0xFF6B6258),
+    outline = Color(0xFFC8BDB0)
 )
 
-/** 夜晚：暮色海岸 —— 深蓝海面 + 暖黄灯光 */
+/** 高级感夜间：深墨蓝 + 月光银 + 暖金灯光 */
 private val NightColors = darkColorScheme(
-    primary = Color(0xFF9EC4D9),
-    onPrimary = Color(0xFF1A2830),
-    primaryContainer = Color(0xFF2E4554),
-    onPrimaryContainer = Color(0xFFD4EAF4),
-    secondary = Color(0xFFD4A574),
+    primary = Color(0xFFB8D4E8),
+    onPrimary = Color(0xFF152028),
+    primaryContainer = Color(0xFF2A3D4C),
+    onPrimaryContainer = Color(0xFFD8ECF8),
+    secondary = Color(0xFFD4B88A),
     onSecondary = Color(0xFF2A2010),
-    secondaryContainer = Color(0xFF4A3828),
-    onSecondaryContainer = Color(0xFFF0DCC4),
-    tertiary = Color(0xFFA8C4B0),
+    secondaryContainer = Color(0xFF4A3A28),
+    onSecondaryContainer = Color(0xFFF0E4D0),
+    tertiary = Color(0xFFA8C4B8),
     onTertiary = Color(0xFF1A2820),
     tertiaryContainer = Color(0xFF344840),
-    onTertiaryContainer = Color(0xFFD4E8DC),
-    background = Color(0xFF1E2A33),
-    onBackground = Color(0xFFEDE4D8),
-    surface = Color(0xFF263340),
-    onSurface = Color(0xFFEDE4D8),
-    surfaceVariant = Color(0xFF3A4854),
-    onSurfaceVariant = Color(0xFFC4B8AC),
-    outline = Color(0xFF5A6874)
+    onTertiaryContainer = Color(0xFFD8EADC),
+    background = Color(0xFF141C24),
+    onBackground = Color(0xFFE8E4DC),
+    surface = Color(0xFF1C2630),
+    onSurface = Color(0xFFE8E4DC),
+    surfaceVariant = Color(0xFF2E3844),
+    onSurfaceVariant = Color(0xFFB8B0A4),
+    outline = Color(0xFF4A5560)
 )
 
 data class ReaderPalette(
@@ -62,16 +62,16 @@ data class ReaderPalette(
 
 fun readerPalette(mode: AppThemeMode): ReaderPalette = when (mode) {
     AppThemeMode.DAY -> ReaderPalette(
-        background = Color(0xFFF4EBE0),
-        text = Color(0xFF4A3F35),
-        muted = Color(0xFF8A7E72),
-        accent = Color(0xFF6A9FB5)
+        background = Color(0xFFF3EEE6),
+        text = Color(0xFF2C2620),
+        muted = Color(0xFF7A7268),
+        accent = Color(0xFF4A6B7C)
     )
     AppThemeMode.NIGHT -> ReaderPalette(
-        background = Color(0xFF1A242C),
-        text = Color(0xFFEDE4D8),
-        muted = Color(0xFFA09890),
-        accent = Color(0xFF9EC4D9)
+        background = Color(0xFF121820),
+        text = Color(0xFFE8E4DC),
+        muted = Color(0xFF9A9488),
+        accent = Color(0xFFB8D4E8)
     )
 }
 
