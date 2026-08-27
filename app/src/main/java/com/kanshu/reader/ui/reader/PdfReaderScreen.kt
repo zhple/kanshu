@@ -57,6 +57,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kanshu.reader.data.prefs.AppThemeMode
 import com.kanshu.reader.music.MusicController
 import com.kanshu.reader.ui.music.miniPlayerBottomInset
+import androidx.compose.ui.graphics.Brush
+import com.kanshu.reader.ui.theme.ReaderPalette
 import com.kanshu.reader.ui.theme.readerPalette
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.roundToInt
@@ -164,6 +166,7 @@ fun PdfReaderScreen(
                     PdfTopBar(
                         title = state.title,
                         themeMode = themeMode,
+                        palette = palette,
                         onBack = onBack,
                         onToggleTheme = viewModel::toggleTheme,
                         modifier = Modifier.align(Alignment.TopCenter)
@@ -172,6 +175,7 @@ fun PdfReaderScreen(
                         canPrev = state.pageIndex > 0,
                         canNext = state.pageIndex < state.pageCount - 1,
                         pageLabel = "${state.pageIndex + 1} / ${state.pageCount}",
+                        palette = palette,
                         onPrev = viewModel::previousPage,
                         onNext = viewModel::nextPage,
                         onPageClick = {
@@ -268,6 +272,7 @@ private fun PdfPageImage(
 private fun PdfTopBar(
     title: String,
     themeMode: AppThemeMode,
+    palette: ReaderPalette,
     onBack: () -> Unit,
     onToggleTheme: () -> Unit,
     modifier: Modifier = Modifier
@@ -275,20 +280,32 @@ private fun PdfTopBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        palette.background.copy(alpha = 0.98f),
+                        palette.background.copy(alpha = 0.82f)
+                    )
+                )
+            )
             .statusBarsPadding()
             .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "返回",
+                tint = palette.text
+            )
         }
         Text(
             text = title,
             modifier = Modifier.weight(1f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.titleMedium
+            style = MaterialTheme.typography.titleMedium,
+            color = palette.text
         )
         IconButton(onClick = onToggleTheme) {
             Icon(
@@ -297,7 +314,8 @@ private fun PdfTopBar(
                 } else {
                     Icons.Default.LightMode
                 },
-                contentDescription = "切换昼夜"
+                contentDescription = "切换昼夜",
+                tint = palette.accent
             )
         }
     }
@@ -308,6 +326,7 @@ private fun PdfBottomBar(
     canPrev: Boolean,
     canNext: Boolean,
     pageLabel: String,
+    palette: ReaderPalette,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onPageClick: () -> Unit,
@@ -316,20 +335,35 @@ private fun PdfBottomBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        palette.background.copy(alpha = 0.82f),
+                        palette.background.copy(alpha = 0.98f)
+                    )
+                )
+            )
             .navigationBarsPadding()
             .padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onPrev, enabled = canPrev) {
-            Icon(Icons.AutoMirrored.Filled.NavigateBefore, contentDescription = "上一页")
+            Icon(
+                Icons.AutoMirrored.Filled.NavigateBefore,
+                contentDescription = "上一页",
+                tint = palette.accent
+            )
         }
         TextButton(onClick = onPageClick) {
-            Text(pageLabel, style = MaterialTheme.typography.labelLarge)
+            Text(pageLabel, style = MaterialTheme.typography.labelLarge, color = palette.text)
         }
         IconButton(onClick = onNext, enabled = canNext) {
-            Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = "下一页")
+            Icon(
+                Icons.AutoMirrored.Filled.NavigateNext,
+                contentDescription = "下一页",
+                tint = palette.accent
+            )
         }
     }
 }

@@ -46,6 +46,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kanshu.reader.data.db.TrackEntity
+import com.kanshu.reader.ui.components.KanshuEmptyState
+import com.kanshu.reader.ui.components.kanshuListCard
 import com.kanshu.reader.data.remote.GithubMusicUploader
 import com.kanshu.reader.data.remote.MusicSync
 import com.kanshu.reader.data.repo.MusicRepository
@@ -231,22 +233,14 @@ fun MusicScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         if (tracks.isEmpty()) {
-            Column(
+            KanshuEmptyState(
+                icon = Icons.Default.LibraryMusic,
+                title = "歌单还是空的",
+                subtitle = "点右下角导入本地歌曲（可多选，含 .ncm），或点云朵同步朋友分享的歌单。",
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text("歌单还是空的", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "点右下角导入本地歌曲（可多选，含 .ncm），或点云朵同步朋友分享的歌单。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
+            )
         } else {
             LazyColumn(
                 modifier = Modifier
@@ -285,8 +279,9 @@ private fun TrackRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .kanshuListCard()
             .clickable(onClick = onPlay)
-            .padding(vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(

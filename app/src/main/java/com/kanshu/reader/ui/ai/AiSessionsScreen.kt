@@ -46,7 +46,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material.icons.filled.Forum
 import com.kanshu.reader.data.db.AiSessionEntity
+import com.kanshu.reader.ui.components.KanshuEmptyState
+import com.kanshu.reader.ui.components.kanshuListCard
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -128,22 +131,14 @@ fun AiSessionsScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         if (sessions.isEmpty()) {
-            Box(
+            KanshuEmptyState(
+                icon = Icons.Default.Forum,
+                title = "还没有角色聊天",
+                subtitle = "点右下角新建：写场景、对方人设和我的人设",
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("还没有角色聊天", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "点右下角新建：写场景、对方人设和我的人设",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
+                    .padding(padding)
+            )
         } else {
             LazyColumn(
                 modifier = Modifier
@@ -301,8 +296,9 @@ private fun SessionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .kanshuListCard()
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {

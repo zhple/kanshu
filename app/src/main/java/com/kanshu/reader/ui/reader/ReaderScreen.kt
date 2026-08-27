@@ -55,6 +55,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +68,8 @@ import com.kanshu.reader.data.prefs.AppThemeMode
 import com.kanshu.reader.music.MusicController
 import com.kanshu.reader.reader.ChapterTitles
 import com.kanshu.reader.ui.music.miniPlayerBottomInset
+import com.kanshu.reader.ui.theme.ReaderFontFamily
+import com.kanshu.reader.ui.theme.ReaderPalette
 import com.kanshu.reader.ui.theme.readerPalette
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.roundToInt
@@ -210,6 +213,7 @@ fun ReaderScreen(
                                 Text(
                                     text = readerPage.text,
                                     color = palette.text,
+                                    fontFamily = ReaderFontFamily,
                                     fontSize = ReaderFontSize,
                                     lineHeight = ReaderLineHeight,
                                     softWrap = true,
@@ -224,6 +228,7 @@ fun ReaderScreen(
                         ReaderTopBar(
                             title = state.title,
                             themeMode = themeMode,
+                            palette = palette,
                             onBack = onBack,
                             onToc = viewModel::openToc,
                             onToggleTheme = viewModel::toggleTheme,
@@ -242,6 +247,7 @@ fun ReaderScreen(
                                 "${state.pageIndex + 1} / ${state.pages.size}"
                             },
                             chapterLabel = chapterLabel,
+                            palette = palette,
                             onPrev = viewModel::previousPage,
                             onNext = viewModel::nextPage,
                             onPageClick = {
@@ -412,6 +418,7 @@ fun ReaderScreen(
 private fun ReaderTopBar(
     title: String,
     themeMode: AppThemeMode,
+    palette: ReaderPalette,
     onBack: () -> Unit,
     onToc: () -> Unit,
     onToggleTheme: () -> Unit,
@@ -420,23 +427,39 @@ private fun ReaderTopBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        palette.background.copy(alpha = 0.98f),
+                        palette.background.copy(alpha = 0.82f)
+                    )
+                )
+            )
             .statusBarsPadding()
             .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "返回",
+                tint = palette.text
+            )
         }
         Text(
             text = title,
             modifier = Modifier.weight(1f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.titleMedium
+            style = MaterialTheme.typography.titleMedium,
+            color = palette.text
         )
         IconButton(onClick = onToc) {
-            Icon(Icons.AutoMirrored.Filled.List, contentDescription = "目录")
+            Icon(
+                Icons.AutoMirrored.Filled.List,
+                contentDescription = "目录",
+                tint = palette.accent
+            )
         }
         IconButton(onClick = onToggleTheme) {
             Icon(
@@ -445,7 +468,8 @@ private fun ReaderTopBar(
                 } else {
                     Icons.Default.LightMode
                 },
-                contentDescription = "切换昼夜"
+                contentDescription = "切换昼夜",
+                tint = palette.accent
             )
         }
     }
@@ -457,6 +481,7 @@ private fun ReaderBottomBar(
     canNext: Boolean,
     pageLabel: String,
     chapterLabel: String,
+    palette: ReaderPalette,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onPageClick: () -> Unit,
@@ -465,7 +490,14 @@ private fun ReaderBottomBar(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        palette.background.copy(alpha = 0.82f),
+                        palette.background.copy(alpha = 0.98f)
+                    )
+                )
+            )
             .navigationBarsPadding()
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
@@ -473,7 +505,7 @@ private fun ReaderBottomBar(
             Text(
                 text = chapterLabel,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = palette.muted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 12.dp)
@@ -485,13 +517,21 @@ private fun ReaderBottomBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onPrev, enabled = canPrev) {
-                Icon(Icons.AutoMirrored.Filled.NavigateBefore, contentDescription = "上一页")
+                Icon(
+                    Icons.AutoMirrored.Filled.NavigateBefore,
+                    contentDescription = "上一页",
+                    tint = palette.accent
+                )
             }
             TextButton(onClick = onPageClick) {
-                Text(pageLabel, style = MaterialTheme.typography.labelLarge)
+                Text(pageLabel, style = MaterialTheme.typography.labelLarge, color = palette.text)
             }
             IconButton(onClick = onNext, enabled = canNext) {
-                Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = "下一页")
+                Icon(
+                    Icons.AutoMirrored.Filled.NavigateNext,
+                    contentDescription = "下一页",
+                    tint = palette.accent
+                )
             }
         }
     }

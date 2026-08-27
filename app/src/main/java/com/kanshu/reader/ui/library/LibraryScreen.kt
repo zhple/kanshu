@@ -71,6 +71,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -84,6 +86,9 @@ import com.kanshu.reader.KanshuApp
 import com.kanshu.reader.data.db.BookEntity
 import com.kanshu.reader.data.db.FolderEntity
 import com.kanshu.reader.data.prefs.AppThemeMode
+import com.kanshu.reader.ui.components.KanshuEmptyState
+import com.kanshu.reader.ui.components.KanshuHeroBanner
+import com.kanshu.reader.ui.components.kanshuListCard
 import com.kanshu.reader.update.AppUpdateInfo
 import com.kanshu.reader.update.UpdateChecker
 import kotlinx.coroutines.launch
@@ -293,10 +298,8 @@ fun LibraryScreen(
                         Text(
                             text = if (inFolder) {
                                 "文件夹 · ${if (themeMode == AppThemeMode.DAY) "白天" else "黑夜"}"
-                            } else if (themeMode == AppThemeMode.DAY) {
-                                "白天模式"
                             } else {
-                                "黑夜模式"
+                                "静读 · 书写 · 共享"
                             },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -414,8 +417,14 @@ fun LibraryScreen(
                 }
 
                 if (empty) {
-                    EmptyLibrary(
-                        inFolder = inFolder,
+                    KanshuEmptyState(
+                        icon = Icons.AutoMirrored.Filled.MenuBook,
+                        title = if (inFolder) "这个文件夹还是空的" else "书架空空如也",
+                        subtitle = if (inFolder) {
+                            "点右下角导入书籍，或从根目录把书移进来"
+                        } else {
+                            "可同步仓库书，也可本地导入后上传到远程仓库"
+                        },
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
@@ -424,6 +433,14 @@ fun LibraryScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        if (!inFolder) {
+                            item {
+                                KanshuHeroBanner(
+                                    title = "看书",
+                                    subtitle = "${books.size} 本书 · ${if (themeMode == AppThemeMode.DAY) "昼读" else "夜读"}"
+                                )
+                            }
+                        }
                         if (!inFolder && sourceFilter != BookSourceFilter.LOCAL) {
                             items(folders, key = { "f-${it.id}" }) { folder ->
                                 FolderRow(
@@ -848,35 +865,6 @@ fun LibraryScreen(
     }
 }
 
-@Composable
-private fun EmptyLibrary(inFolder: Boolean, modifier: Modifier = Modifier) {
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                if (inFolder) "这个文件夹还是空的" else "书架空空如也",
-                style = MaterialTheme.typography.titleMedium
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                if (inFolder) {
-                    "点右下角导入书籍，或从根目录把书移进来"
-                } else {
-                    "可同步仓库书，也可本地导入后上传到远程仓库"
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FolderRow(
@@ -888,8 +876,7 @@ private fun FolderRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f))
+            .kanshuListCard()
             .combinedClickable(onClick = onClick, onLongClick = onDelete)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -935,16 +922,26 @@ private fun BookRow(
     onClick: () -> Unit,
     onMenu: () -> Unit
 ) {
-    val icon: ImageVector = if (book.format.equals("PDF", ignoreCase = true)) {
+    val isPdf = book.format.equals("PDF", ignoreCase = true)
+    val icon: ImageVector = if (isPdf) {
         Icons.Default.PictureAsPdf
     } else {
         Icons.AutoMirrored.Filled.MenuBook
     }
+    val coverBrush = if (isPdf) {
+        Brush.linearGradient(listOf(Color(0xFF8B6914), Color(0xFFD4A84B)))
+    } else {
+        Brush.linearGradient(
+            listOf(
+                MaterialTheme.colorScheme.primary,
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)
+            )
+        )
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .kanshuListCard()
             .combinedClickable(onClick = onClick, onLongClick = onMenu)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -953,7 +950,7 @@ private fun BookRow(
             modifier = Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.primary),
+                .background(coverBrush),
             contentAlignment = Alignment.Center
         ) {
             Icon(
