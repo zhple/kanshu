@@ -168,6 +168,10 @@ fun MusicScreen(
         if (uris.isNotEmpty()) viewModel.importTracks(uris, context.contentResolver)
     }
 
+    LaunchedEffect(Unit) {
+        musicController.showMiniBarIfActive()
+    }
+
     LaunchedEffect(message) {
         val msg = message ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(msg)

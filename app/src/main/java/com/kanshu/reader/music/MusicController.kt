@@ -163,6 +163,17 @@ class MusicController(
         _state.update { it.copy(expanded = false) }
     }
 
+    /** 隐藏底部迷你条，音乐继续播放；进入歌单页会再显示。 */
+    fun dismissMiniBar() {
+        _state.update { it.copy(visible = false, expanded = false) }
+    }
+
+    fun showMiniBarIfActive() {
+        if (queue.isNotEmpty() || player.isPlaying) {
+            _state.update { it.copy(visible = true) }
+        }
+    }
+
     fun hide() {
         player.pause()
         _state.update { it.copy(visible = false, expanded = false, playing = false) }

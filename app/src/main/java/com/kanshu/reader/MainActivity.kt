@@ -253,6 +253,7 @@ class MainActivity : ComponentActivity() {
                                 )
                                 ReaderScreen(
                                     viewModel = vm,
+                                    musicController = app.container.musicController,
                                     onBack = { navController.popBackStack() }
                                 )
                             }
@@ -270,10 +271,11 @@ class MainActivity : ComponentActivity() {
                                         app.container.themePreferences
                                     )
                                 )
-                                PdfReaderScreen(
-                                    viewModel = vm,
-                                    onBack = { navController.popBackStack() }
-                                )
+                            PdfReaderScreen(
+                                viewModel = vm,
+                                musicController = app.container.musicController,
+                                onBack = { navController.popBackStack() }
+                            )
                             }
                         }
 

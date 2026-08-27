@@ -55,6 +55,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kanshu.reader.data.prefs.AppThemeMode
+import com.kanshu.reader.music.MusicController
+import com.kanshu.reader.ui.music.miniPlayerBottomInset
 import com.kanshu.reader.ui.theme.readerPalette
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.roundToInt
@@ -63,10 +65,12 @@ import kotlin.math.roundToInt
 @Composable
 fun PdfReaderScreen(
     viewModel: PdfReaderViewModel,
+    musicController: MusicController,
     onBack: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val miniPlayerInset = miniPlayerBottomInset(musicController)
     var showJumpDialog by remember { mutableStateOf(false) }
     var jumpInput by remember { mutableStateOf("") }
     var jumpError by remember { mutableStateOf<String?>(null) }
@@ -151,7 +155,7 @@ fun PdfReaderScreen(
                             .fillMaxSize()
                             .padding(
                                 top = if (state.showControls) 72.dp else 12.dp,
-                                bottom = if (state.showControls) 72.dp else 12.dp
+                                bottom = (if (state.showControls) 72.dp else 12.dp) + miniPlayerInset
                             )
                     )
                 }
@@ -175,7 +179,9 @@ fun PdfReaderScreen(
                             jumpError = null
                             showJumpDialog = true
                         },
-                        modifier = Modifier.align(Alignment.BottomCenter)
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = miniPlayerInset)
                     )
                 }
             }

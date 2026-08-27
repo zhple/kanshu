@@ -64,7 +64,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kanshu.reader.data.prefs.AppThemeMode
+import com.kanshu.reader.music.MusicController
 import com.kanshu.reader.reader.ChapterTitles
+import com.kanshu.reader.ui.music.miniPlayerBottomInset
 import com.kanshu.reader.ui.theme.readerPalette
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.roundToInt
@@ -81,10 +83,13 @@ private val BottomContentReserve = 72.dp
 @Composable
 fun ReaderScreen(
     viewModel: ReaderViewModel,
+    musicController: MusicController,
     onBack: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val miniPlayerInset = miniPlayerBottomInset(musicController)
+    val bottomReserve = BottomContentReserve + miniPlayerInset
     var showJumpDialog by remember { mutableStateOf(false) }
     var jumpInput by remember { mutableStateOf("") }
     var jumpError by remember { mutableStateOf<String?>(null) }
@@ -121,7 +126,7 @@ fun ReaderScreen(
                         (maxWidth - ReaderHorizontalPadding * 2).toPx().roundToInt()
                     }
                     val contentHeightPx = with(density) {
-                        (maxHeight - TopContentReserve - BottomContentReserve - ReaderVerticalPadding * 2)
+                        (maxHeight - TopContentReserve - bottomReserve - ReaderVerticalPadding * 2)
                             .toPx()
                             .roundToInt()
                             .coerceAtLeast(1)
@@ -198,7 +203,7 @@ fun ReaderScreen(
                                         start = ReaderHorizontalPadding,
                                         end = ReaderHorizontalPadding,
                                         top = TopContentReserve,
-                                        bottom = BottomContentReserve
+                                        bottom = bottomReserve
                                     )
                                     .padding(vertical = ReaderVerticalPadding)
                             ) {
@@ -246,7 +251,9 @@ fun ReaderScreen(
                                     showJumpDialog = true
                                 }
                             },
-                            modifier = Modifier.align(Alignment.BottomCenter)
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = miniPlayerInset)
                         )
                     }
                 }

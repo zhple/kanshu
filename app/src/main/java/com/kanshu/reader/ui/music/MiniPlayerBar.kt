@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
@@ -63,6 +64,7 @@ fun MiniPlayerBar(
             state = state,
             onToggleExpand = controller::toggleExpanded,
             onTogglePlay = controller::togglePlayPause,
+            onDismiss = controller::dismissMiniBar,
             onOpenPlaylist = onOpenPlaylist
         )
         AnimatedVisibility(
@@ -87,15 +89,18 @@ private fun CollapsedRow(
     state: MusicPlayerState,
     onToggleExpand: () -> Unit,
     onTogglePlay: () -> Unit,
+    onDismiss: () -> Unit,
     onOpenPlaylist: () -> Unit
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onToggleExpand),
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onToggleExpand)
+        ) {
             Text(
                 text = state.title.ifBlank { "未在播放" },
                 style = MaterialTheme.typography.titleSmall,
@@ -124,8 +129,11 @@ private fun CollapsedRow(
                 } else {
                     Icons.Default.KeyboardArrowUp
                 },
-                contentDescription = if (state.expanded) "收起" else "展开"
+                contentDescription = if (state.expanded) "收起控制面板" else "展开控制面板"
             )
+        }
+        IconButton(onClick = onDismiss) {
+            Icon(Icons.Default.Close, contentDescription = "隐藏迷你条")
         }
         TextButton(onClick = onOpenPlaylist) { Text("歌单") }
     }
