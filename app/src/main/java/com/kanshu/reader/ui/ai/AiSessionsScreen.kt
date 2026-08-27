@@ -49,7 +49,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material.icons.filled.Forum
 import com.kanshu.reader.data.db.AiSessionEntity
+import com.kanshu.reader.ui.components.KanshuAmbientBackground
 import com.kanshu.reader.ui.components.KanshuEmptyState
+import com.kanshu.reader.ui.components.kanshuFloat
 import com.kanshu.reader.ui.components.kanshuListCard
 import com.kanshu.reader.ui.components.kanshuPressScale
 import kotlinx.coroutines.launch
@@ -115,6 +117,7 @@ fun AiSessionsScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
+                modifier = Modifier.kanshuFloat(),
                 onClick = {
                     if (!keys.hasDeepseek) {
                         deepseekInput = ""
@@ -132,20 +135,21 @@ fun AiSessionsScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
+        KanshuAmbientBackground(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
         if (sessions.isEmpty()) {
             KanshuEmptyState(
                 icon = Icons.Default.Forum,
                 title = "还没有角色聊天",
                 subtitle = "点右下角新建：写场景、对方人设和我的人设",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
+                modifier = Modifier.fillMaxSize()
             )
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -157,6 +161,7 @@ fun AiSessionsScreen(
                     )
                 }
             }
+        }
         }
     }
 

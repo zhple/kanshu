@@ -47,7 +47,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kanshu.reader.data.db.TrackEntity
+import com.kanshu.reader.ui.components.KanshuAmbientBackground
 import com.kanshu.reader.ui.components.KanshuEmptyState
+import com.kanshu.reader.ui.components.kanshuFloat
 import com.kanshu.reader.ui.components.kanshuListCard
 import com.kanshu.reader.ui.components.kanshuPressScale
 import com.kanshu.reader.data.remote.GithubMusicUploader
@@ -212,7 +214,9 @@ fun MusicScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                modifier = Modifier.padding(bottom = miniPlayerInset),
+                modifier = Modifier
+                    .padding(bottom = miniPlayerInset)
+                    .kanshuFloat(),
                 onClick = {
                     picker.launch(
                         arrayOf(
@@ -234,20 +238,21 @@ fun MusicScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
+        KanshuAmbientBackground(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
         if (tracks.isEmpty()) {
             KanshuEmptyState(
                 icon = Icons.Default.LibraryMusic,
                 title = "歌单还是空的",
                 subtitle = "点右下角导入本地歌曲（可多选，含 .ncm），或点云朵同步朋友分享的歌单。",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
+                modifier = Modifier.fillMaxSize()
             )
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
@@ -266,6 +271,7 @@ fun MusicScreen(
                     )
                 }
             }
+        }
         }
     }
 }

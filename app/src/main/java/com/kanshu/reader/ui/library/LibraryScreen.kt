@@ -87,8 +87,10 @@ import com.kanshu.reader.KanshuApp
 import com.kanshu.reader.data.db.BookEntity
 import com.kanshu.reader.data.db.FolderEntity
 import com.kanshu.reader.data.prefs.AppThemeMode
+import com.kanshu.reader.ui.components.KanshuAmbientBackground
 import com.kanshu.reader.ui.components.KanshuEmptyState
 import com.kanshu.reader.ui.components.KanshuHeroBanner
+import com.kanshu.reader.ui.components.kanshuFloat
 import com.kanshu.reader.ui.components.kanshuListCard
 import com.kanshu.reader.ui.components.kanshuPressScale
 import com.kanshu.reader.update.AppUpdateInfo
@@ -350,16 +352,23 @@ fun LibraryScreen(
         },
         floatingActionButton = {
             Column(horizontalAlignment = Alignment.End) {
-                SmallFloatingActionButton(onClick = onMusic) {
+                SmallFloatingActionButton(
+                    onClick = onMusic,
+                    modifier = Modifier.kanshuFloat(phaseOffset = 0f)
+                ) {
                     Icon(Icons.Default.LibraryMusic, contentDescription = "共享歌单")
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                SmallFloatingActionButton(onClick = onAiChat) {
+                SmallFloatingActionButton(
+                    onClick = onAiChat,
+                    modifier = Modifier.kanshuFloat(phaseOffset = 0.2f)
+                ) {
                     Icon(Icons.Default.Forum, contentDescription = "角色场景聊天")
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 SmallFloatingActionButton(
-                    onClick = { onWrite(currentFolderId) }
+                    onClick = { onWrite(currentFolderId) },
+                    modifier = Modifier.kanshuFloat(phaseOffset = 0.4f)
                 ) {
                     Icon(Icons.Default.Edit, contentDescription = "写点东西")
                 }
@@ -377,7 +386,8 @@ fun LibraryScreen(
                                 )
                             )
                         }
-                    }
+                    },
+                    modifier = Modifier.kanshuFloat(amplitudeDp = 6.dp, phaseOffset = 0.6f)
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "导入书籍")
                 }
@@ -388,7 +398,7 @@ fun LibraryScreen(
         val showFolders = !inFolder && folders.isNotEmpty() && sourceFilter != BookSourceFilter.LOCAL
         val empty = books.isEmpty() && !showFolders
 
-        Box(
+        KanshuAmbientBackground(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)

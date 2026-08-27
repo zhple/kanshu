@@ -6,10 +6,12 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,9 +22,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,20 +34,34 @@ import androidx.compose.ui.unit.dp
 private val CardShape = RoundedCornerShape(16.dp)
 
 @Composable
-fun Modifier.kanshuListCard(): Modifier = this
-    .clip(CardShape)
-    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))
-    .border(
-        width = 1.dp,
-        brush = Brush.linearGradient(
-            colors = listOf(
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f),
-                Color.Transparent
-            )
+fun Modifier.kanshuListCard(): Modifier {
+    val shimmerTransition = rememberInfiniteTransition(label = "cardShimmer")
+    val shimmer by shimmerTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(5000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
         ),
-        shape = CardShape
+        label = "cardShimmerValue"
     )
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
+    return this
+        .clip(CardShape)
+        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))
+        .border(
+            width = 1.dp,
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    primary.copy(alpha = 0.12f + shimmer * 0.16f),
+                    secondary.copy(alpha = 0.08f + shimmer * 0.12f),
+                    Color.Transparent
+                )
+            ),
+            shape = CardShape
+        )
+}
 
 @Composable
 fun KanshuHeroBanner(
@@ -71,14 +89,24 @@ fun KanshuHeroBanner(
             .background(
                 Brush.linearGradient(
                     colors = listOf(
-                        androidx.compose.ui.graphics.lerp(sea, coffee, drift * 0.35f),
-                        androidx.compose.ui.graphics.lerp(coffee, foam, drift * 0.25f),
-                        androidx.compose.ui.graphics.lerp(foam, sea, drift * 0.2f)
+                        lerp(sea, coffee, drift * 0.35f),
+                        lerp(coffee, foam, drift * 0.25f),
+                        lerp(foam, sea, drift * 0.2f)
                     )
                 )
             )
             .padding(horizontal = 20.dp, vertical = 18.dp)
     ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val glossX = w * (0.15f + drift * 0.7f)
+            drawCircle(
+                color = Color.White.copy(alpha = 0.08f + drift * 0.06f),
+                radius = w * 0.22f,
+                center = Offset(glossX, h * 0.35f)
+            )
+        }
         Column {
             Text(
                 text = title,

@@ -1,6 +1,11 @@
 package com.kanshu.reader.ui.music
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -39,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,6 +61,16 @@ fun MiniPlayerBar(
     modifier: Modifier = Modifier
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
+    val infinite = rememberInfiniteTransition(label = "miniGlow")
+    val glow by infinite.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "miniGlowValue"
+    )
     AnimatedVisibility(
         visible = state.visible,
         modifier = modifier,
@@ -90,6 +106,7 @@ fun MiniPlayerBar(
         ) {
             CollapsedRow(
                 state = state,
+                glow = if (state.playing) glow else 1f,
                 onToggleExpand = controller::toggleExpanded,
                 onTogglePlay = controller::togglePlayPause,
                 onDismiss = controller::dismissMiniBar,
@@ -116,6 +133,7 @@ fun MiniPlayerBar(
 @Composable
 private fun CollapsedRow(
     state: MusicPlayerState,
+    glow: Float,
     onToggleExpand: () -> Unit,
     onTogglePlay: () -> Unit,
     onDismiss: () -> Unit,
@@ -145,7 +163,13 @@ private fun CollapsedRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        IconButton(onClick = onTogglePlay) {
+        IconButton(
+            onClick = onTogglePlay,
+            modifier = Modifier.graphicsLayer {
+                scaleX = glow
+                scaleY = glow
+            }
+        ) {
             Icon(
                 imageVector = if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                 contentDescription = if (state.playing) "暂停" else "播放"
