@@ -274,8 +274,10 @@ dialog textarea {
 .page-editor-wrap {
   flex: 1;
   min-height: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
+  cursor: text;
 }
 
 textarea.page-editor,
@@ -293,8 +295,10 @@ div.page-reader {
   line-height: 1.75;
   background: var(--panel);
   color: var(--text);
+  caret-color: var(--text);
   outline: none;
   box-shadow: inset 0 0 0 1px var(--border);
+  pointer-events: auto;
 }
 
 div.page-reader {

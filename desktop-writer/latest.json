@@ -1,14 +1,14 @@
 {
-  "version": "1.2.9",
-  "tag": "writer-v1.2.9",
-  "htmlUrl": "https://github.com/zhple/kanshu/releases/tag/writer-v1.2.9",
-  "releaseNotes": "修复打开文稿后第二章被合并进第一章正文、大纲丢失的问题。",
+  "version": "1.2.10",
+  "tag": "writer-v1.2.10",
+  "htmlUrl": "https://github.com/zhple/kanshu/releases/tag/writer-v1.2.10",
+  "releaseNotes": "修复写作区偶尔无法点击输入、光标不出现的问题。",
   "setup": {
-    "name": "kanshu-writer-setup-1.2.9.exe",
-    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.9/kanshu-writer-setup-1.2.9.exe"
+    "name": "kanshu-writer-setup-1.2.10.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.10/kanshu-writer-setup-1.2.10.exe"
   },
   "portable": {
-    "name": "kanshu-writer-1.2.9-portable.exe",
-    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.9/kanshu-writer-1.2.9-portable.exe"
+    "name": "kanshu-writer-1.2.10-portable.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.10/kanshu-writer-1.2.10-portable.exe"
   }
 }

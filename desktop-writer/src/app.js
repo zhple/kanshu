@@ -20,13 +20,13 @@ const state = {
   config: null,
   focusMode: false,
   autoFocusEditor: false,
+  editorWantsFocus: false,
   baselineChars: 0,
   sessionGain: 0,
   dailyDone: 0,
   dailyDate: '',
   autoSaveTimer: null,
-  activeEditor: null,
-  resizeObserver: null
+  activeEditor: null
 };
 
 const el = {
@@ -164,6 +164,7 @@ async function init() {
   loadDailyProgress();
   updateWorkspaceLabel();
   bindUpdateProgressListener();
+  showUpdateProgress({ phase: 'hide' });
   bindEvents();
   try {
     await refreshLibraryList();
@@ -514,17 +515,25 @@ function splitOverflowForEditor(ta, text) {
   const budget = getViewportCharBudget(ta);
   let result = splitTextOverflow(text, budget);
   if (!result.overflow && ta.scrollHeight > ta.clientHeight + 4) {
-    let lo = 0;
-    let hi = text.length;
-    while (lo < hi) {
-      const mid = Math.ceil((lo + hi) / 2);
-      ta.value = text.slice(0, mid);
-      if (ta.scrollHeight > ta.clientHeight + 4) hi = mid - 1;
-      else lo = mid;
+    const saved = ta.value;
+    const selStart = ta.selectionStart;
+    const selEnd = ta.selectionEnd;
+    try {
+      let lo = 0;
+      let hi = text.length;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        ta.value = text.slice(0, mid);
+        if (ta.scrollHeight > ta.clientHeight + 4) hi = mid - 1;
+        else lo = mid;
+      }
+      const keep = text.slice(0, lo).trimEnd();
+      const overflow = text.slice(lo).trimStart();
+      if (overflow) result = { keep, overflow };
+    } finally {
+      ta.value = saved;
+      try { ta.setSelectionRange(selStart, selEnd); } catch { /* ignore */ }
     }
-    const keep = text.slice(0, lo).trimEnd();
-    const overflow = text.slice(lo).trimStart();
-    if (overflow) result = { keep, overflow };
   }
   return result;
 }
@@ -547,18 +556,17 @@ function applyPageOverflow(keep, overflow) {
   setStatus('本页已满，已自动翻到下一页');
 }
 
-function setupEditorResize(ta) {
-  if (state.resizeObserver) state.resizeObserver.disconnect();
-  state.resizeObserver = new ResizeObserver(() => {
-    if (state.activeEditor !== ta || !ta.value) return;
-    const { overflow } = splitOverflowForEditor(ta, ta.value);
-    if (overflow) {
-      const { keep } = splitOverflowForEditor(ta, ta.value);
-      applyPageOverflow(keep, overflow);
+function focusPageEditor(ta, { atEnd = false } = {}) {
+  if (!ta) return;
+  state.editorWantsFocus = true;
+  requestAnimationFrame(() => {
+    if (!ta.isConnected) return;
+    ta.focus({ preventScroll: true });
+    if (atEnd) {
+      const len = ta.value.length;
+      try { ta.setSelectionRange(len, len); } catch { /* ignore */ }
     }
   });
-  state.resizeObserver.observe(ta);
-  if (el.editorPane) state.resizeObserver.observe(el.editorPane);
 }
 
 function handlePageInput(ta) {
@@ -638,21 +646,38 @@ function render() {
   wrap.className = 'page-editor-wrap';
   const ta = document.createElement('textarea');
   ta.className = 'page-editor';
+  ta.setAttribute('spellcheck', 'true');
   ta.value = pageText;
   ta.placeholder = '在这里写本章内容…写满会自动翻页；「下一章」换一张新纸';
   ta.oninput = () => handlePageInput(ta);
-  ta.onfocus = () => { state.activeEditor = ta; };
+  ta.onfocus = () => {
+    state.activeEditor = ta;
+    state.editorWantsFocus = true;
+  };
+  ta.onblur = () => {
+    window.setTimeout(() => {
+      if (document.activeElement !== ta && !wrap.contains(document.activeElement)) {
+        state.editorWantsFocus = false;
+      }
+    }, 0);
+  };
+  wrap.addEventListener('mousedown', (e) => {
+    state.editorWantsFocus = true;
+    if (e.target === wrap) {
+      e.preventDefault();
+      focusPageEditor(ta, { atEnd: true });
+    }
+  });
   wrap.appendChild(ta);
   el.blocks.appendChild(wrap);
 
   renderOutline();
   updateStats();
   document.body.classList.toggle('focus-mode', state.focusMode);
-  if (state.autoFocusEditor) {
+  if (state.autoFocusEditor || state.editorWantsFocus) {
     state.autoFocusEditor = false;
-    ta.focus();
+    focusPageEditor(ta, { atEnd: !state.editorWantsFocus });
   }
-  setupEditorResize(ta);
 }
 
 async function saveDraft(fromAuto = false) {
@@ -753,6 +778,7 @@ function bindEvents() {
   document.getElementById('btn-focus').onclick = () => {
     commitEditor();
     state.focusMode = !state.focusMode;
+    state.editorWantsFocus = true;
     document.getElementById('btn-focus').textContent = state.focusMode ? '退出专注' : '专注';
     render();
   };
@@ -852,6 +878,7 @@ function bindEvents() {
       e.preventDefault();
       commitEditor();
       state.focusMode = !state.focusMode;
+      state.editorWantsFocus = true;
       document.getElementById('btn-focus').textContent = state.focusMode ? '退出专注' : '专注';
       render();
     }
