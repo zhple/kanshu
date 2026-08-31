@@ -241,7 +241,9 @@ div.page-reader {
   flex: 1;
   width: 100%;
   min-height: 0;
+  height: 100%;
   resize: none;
+  overflow: hidden;
   border: none;
   border-radius: 12px;
   padding: 16px 18px;
@@ -254,7 +256,6 @@ div.page-reader {
 }
 
 div.page-reader {
-  overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -279,10 +280,7 @@ div.page-reader {
 .editor-pane.read-mode #btn-save,
 .editor-pane.read-mode #btn-upload,
 .editor-pane.read-mode #btn-chapter,
-.editor-pane.read-mode #btn-image,
-.editor-pane.read-mode #btn-ai-continue,
-.editor-pane.read-mode #btn-ai-polish,
-.editor-pane.read-mode #btn-ai-expand {
+.editor-pane.read-mode #btn-image {
   display: none;
 }
 

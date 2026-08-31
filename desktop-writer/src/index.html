@@ -48,9 +48,6 @@
           <span class="sep"></span>
           <button id="btn-chapter" class="btn secondary">下一章</button>
           <button id="btn-image" class="btn secondary">插图</button>
-          <button id="btn-ai-continue" class="btn secondary" title="DeepSeek 续写">续写</button>
-          <button id="btn-ai-polish" class="btn secondary">润色</button>
-          <button id="btn-ai-expand" class="btn secondary">扩写</button>
           <button id="btn-focus" class="btn ghost">专注</button>
           <button id="btn-save" class="btn primary">保存</button>
           <button id="btn-upload" class="btn secondary">上传 GitHub</button>
@@ -106,8 +103,6 @@
       <input id="cfg-repo" type="text" value="kanshu" />
       <label>分支</label>
       <input id="cfg-branch" type="text" value="main" />
-      <label>DeepSeek API Key（续写/润色/扩写）</label>
-      <input id="cfg-deepseek" type="password" placeholder="sk-..." autocomplete="off" />
       <label>每日写作目标（字）</label>
       <input id="cfg-goal" type="number" min="100" max="50000" value="1000" />
       <label class="check-row">
@@ -119,28 +114,6 @@
         <button value="ok" class="btn primary">保存</button>
       </div>
     </form>
-  </dialog>
-
-  <dialog id="ai-dialog">
-    <form method="dialog" id="ai-form">
-      <h2 id="ai-dialog-title">AI 助手</h2>
-      <p class="hint">基于当前聚焦段落；结果会先预览再写入。</p>
-      <label>补充要求（可选）</label>
-      <textarea id="ai-hint" rows="3" placeholder="例如：偏虐、多对话、写到天黑"></textarea>
-      <div class="dialog-actions">
-        <button value="cancel" class="btn ghost">取消</button>
-        <button value="ok" class="btn primary">生成</button>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="ai-preview-dialog">
-    <h2>AI 结果预览</h2>
-    <div id="ai-preview-body" class="ai-preview"></div>
-    <div class="dialog-actions">
-      <button id="ai-preview-discard" class="btn ghost">丢弃</button>
-      <button id="ai-preview-apply" class="btn primary">写入文稿</button>
-    </div>
   </dialog>
 
   <script type="module" src="app.js"></script>

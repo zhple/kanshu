@@ -59,7 +59,7 @@ object WriteBlocks {
     )
 
     /** 单页大约容纳的文字量；超出则软分页，避免超长一屏。 */
-    private const val PAGE_CHAR_BUDGET = 1600
+    const val PAGE_CHAR_BUDGET = 1600
     private const val IMAGE_WEIGHT = 500
 
     fun newId(): String = UUID.randomUUID().toString()
@@ -231,5 +231,51 @@ object WriteBlocks {
             pages += WriteEditPage("正文", 0, blocks.size)
         }
         return pages
+    }
+
+    fun pagePlainText(blocks: List<WriteBlock>, page: WriteEditPage?): String {
+        if (page == null) return ""
+        return blocks.subList(page.startIndex, page.endExclusive)
+            .filterIsInstance<WriteBlock.Paragraph>()
+            .joinToString("\n\n") { it.text }
+    }
+
+    fun setPagePlainText(blocks: MutableList<WriteBlock>, page: WriteEditPage, text: String) {
+        val segment = blocks.subList(page.startIndex, page.endExclusive).toList()
+        val next = mutableListOf<WriteBlock>()
+        var textApplied = false
+        for (block in segment) {
+            when (block) {
+                is WriteBlock.Image -> next += block
+                is WriteBlock.Paragraph -> if (!textApplied) {
+                    next += block.copy(text = text)
+                    textApplied = true
+                }
+            }
+        }
+        if (!textApplied) {
+            next.add(0, WriteBlock.Paragraph(text))
+        }
+        blocks.subList(page.startIndex, page.endExclusive).clear()
+        blocks.addAll(page.startIndex, next)
+    }
+
+    data class TextOverflow(val keep: String, val overflow: String)
+
+    fun splitTextOverflow(text: String, budget: Int = PAGE_CHAR_BUDGET): TextOverflow {
+        var count = 0
+        for (i in text.indices) {
+            if (!text[i].isWhitespace()) count++
+            if (count > budget) {
+                var splitAt = i
+                val nl = text.lastIndexOf('\n', i)
+                if (nl > i - 160) splitAt = nl + 1
+                val keep = text.substring(0, splitAt).trimEnd()
+                val overflow = text.substring(splitAt).trimStart()
+                if (overflow.isEmpty()) return TextOverflow(text, "")
+                return TextOverflow(keep, overflow)
+            }
+        }
+        return TextOverflow(text, "")
     }
 }

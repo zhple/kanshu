@@ -24,8 +24,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -37,9 +41,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.NavigateBefore
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.LibraryAdd
@@ -85,12 +87,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import com.kanshu.reader.data.ai.DeepSeekClient
 import com.kanshu.reader.data.repo.BookRepository
 import com.kanshu.reader.reader.WriteBlock
+import com.kanshu.reader.reader.WriteBlocks
 import kotlinx.coroutines.flow.distinctUntilChanged
-import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -102,14 +102,10 @@ fun WriteScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val hasGithubToken by viewModel.hasGithubToken.collectAsStateWithLifecycle()
-    val hasDeepseekKey by viewModel.hasDeepseekKey.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     var showChapterDialog by remember { mutableStateOf(false) }
     var chapterSubtitle by remember { mutableStateOf("") }
-    var showAiDialog by remember { mutableStateOf(false) }
-    var aiHint by remember { mutableStateOf("") }
-    var pendingAiMode by remember { mutableStateOf(DeepSeekClient.WriteAssistMode.CONTINUE) }
     var showGoalDialog by remember { mutableStateOf(false) }
     var goalInput by remember { mutableStateOf("") }
 
@@ -170,54 +166,6 @@ fun WriteScreen(
         )
     }
 
-    if (showAiDialog) {
-        AlertDialog(
-            onDismissRequest = { showAiDialog = false },
-            title = {
-                Text(
-                    when (pendingAiMode) {
-                        DeepSeekClient.WriteAssistMode.CONTINUE -> "AI 续写"
-                        DeepSeekClient.WriteAssistMode.POLISH -> "AI 润色"
-                        DeepSeekClient.WriteAssistMode.EXPAND -> "AI 扩写"
-                    }
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        if (hasDeepseekKey) {
-                            "基于当前聚焦段落调用 DeepSeek。结果会先预览，确认后再写入。"
-                        } else {
-                            "请先在「角色场景聊天」设置里填写 DeepSeek API Key。"
-                        },
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    OutlinedTextField(
-                        value = aiHint,
-                        onValueChange = { aiHint = it },
-                        label = { Text("补充要求（可选）") },
-                        placeholder = { Text("例如：偏虐、多对话、写到天黑") },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 2
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showAiDialog = false
-                        viewModel.requestAiAssist(pendingAiMode, aiHint)
-                        aiHint = ""
-                    },
-                    enabled = hasDeepseekKey && !state.aiBusy
-                ) { Text("生成") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAiDialog = false }) { Text("取消") }
-            }
-        )
-    }
-
     if (showGoalDialog) {
         AlertDialog(
             onDismissRequest = { showGoalDialog = false },
@@ -242,29 +190,6 @@ fun WriteScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showGoalDialog = false }) { Text("取消") }
-            }
-        )
-    }
-
-    if (state.aiPreview != null) {
-        AlertDialog(
-            onDismissRequest = viewModel::dismissAiPreview,
-            title = { Text("AI 结果预览") },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 360.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    Text(state.aiPreview.orEmpty())
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = viewModel::applyAiPreview) { Text("写入文稿") }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::dismissAiPreview) { Text("丢弃") }
             }
         )
     }
@@ -462,47 +387,8 @@ fun WriteScreen(
                             }
                         }
 
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    pendingAiMode = DeepSeekClient.WriteAssistMode.CONTINUE
-                                    showAiDialog = true
-                                },
-                                enabled = !state.aiBusy
-                            ) {
-                                Icon(Icons.Default.AutoAwesome, contentDescription = null)
-                                Text("续写", modifier = Modifier.padding(start = 4.dp))
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    pendingAiMode = DeepSeekClient.WriteAssistMode.POLISH
-                                    showAiDialog = true
-                                },
-                                enabled = !state.aiBusy
-                            ) { Text("润色") }
-                            OutlinedButton(
-                                onClick = {
-                                    pendingAiMode = DeepSeekClient.WriteAssistMode.EXPAND
-                                    showAiDialog = true
-                                },
-                                enabled = !state.aiBusy
-                            ) { Text("扩写") }
-                            if (state.aiBusy) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier
-                                        .padding(start = 8.dp)
-                                        .height(24.dp)
-                                        .width(24.dp),
-                                    strokeWidth = 2.dp
-                                )
-                            }
-                        }
-
                         Text(
-                            "左右翻页 · 长按图片把手拖动 · 约 18 秒自动保存 · 专注模式可隐藏工具栏",
+                            "用下方按钮翻页 · 写满自动下一页 · 约 18 秒自动保存",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -531,25 +417,24 @@ fun WriteScreen(
                         .weight(1f)
                         .fillMaxWidth(),
                     beyondViewportPageCount = 0,
-                    userScrollEnabled = true
+                    userScrollEnabled = false
                 ) { page ->
                     val pageInfo = state.pages.getOrNull(page)
                     if (pageInfo == null || pageInfo.size <= 0) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("这一页还是空的，写点内容或插入图片吧")
+                            Text("这一页还是空的，写点内容吧")
                         }
                     } else {
                         val pageBlocks = state.blocks.subList(pageInfo.startIndex, pageInfo.endExclusive)
                         WritePageEditor(
                             pageBlocks = pageBlocks,
+                            pageText = WriteBlocks.pagePlainText(state.blocks, pageInfo),
                             globalStartIndex = pageInfo.startIndex,
-                            enabled = !state.saving && !state.aiBusy,
+                            enabled = !state.saving,
                             resolveImage = viewModel::resolveImageFile,
-                            onParagraphChange = viewModel::updateParagraph,
-                            onFocus = viewModel::setFocusedBlock,
+                            onPageTextChange = viewModel::updatePagePlainText,
                             onImageWidth = viewModel::setImageWidth,
-                            onDelete = viewModel::removeBlock,
-                            onMoveWithinPage = viewModel::moveWithinPage
+                            onDelete = viewModel::removeBlock
                         )
                     }
                 }
@@ -627,73 +512,77 @@ private fun WriteStatsBar(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun WritePageEditor(
     pageBlocks: List<WriteBlock>,
+    pageText: String,
     globalStartIndex: Int,
     enabled: Boolean,
     resolveImage: (String) -> java.io.File?,
-    onParagraphChange: (Int, String) -> Unit,
-    onFocus: (Int) -> Unit,
+    onPageTextChange: (String, Int) -> Unit,
     onImageWidth: (Int, Float) -> Unit,
-    onDelete: (Int) -> Unit,
-    onMoveWithinPage: (Int, Int) -> Unit
+    onDelete: (Int) -> Unit
 ) {
-    val lazyListState = rememberLazyListState()
-    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        onMoveWithinPage(from.index, to.index)
-    }
+    val density = LocalDensity.current
+    val lineHeight = 28.sp
+    var charBudget by remember { mutableIntStateOf(WriteBlocks.PAGE_CHAR_BUDGET) }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        state = lazyListState,
-        contentPadding = PaddingValues(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        itemsIndexed(
-            items = pageBlocks,
-            key = { _, block -> block.id }
-        ) { localIndex, block ->
-            val globalIndex = globalStartIndex + localIndex
-            ReorderableItem(reorderableState, key = block.id) { isDragging ->
-                val elevation by animateDpAsState(if (isDragging) 6.dp else 0.dp, label = "drag")
-                when (block) {
-                    is WriteBlock.Paragraph -> {
-                        OutlinedTextField(
-                            value = block.text,
-                            onValueChange = { onParagraphChange(globalIndex, it) },
-                            placeholder = {
-                                Text(if (localIndex == 0) "在这一页写正文…" else "继续写…")
-                            },
-                            enabled = enabled,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 120.dp)
-                                .onFocusChanged { if (it.isFocused) onFocus(globalIndex) },
-                            minLines = 4
-                        )
-                    }
-                    is WriteBlock.Image -> {
-                        Card(
-                            elevation = CardDefaults.cardElevation(defaultElevation = elevation),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            ImageBlockEditor(
-                                path = block.path,
-                                widthPercent = block.widthPercent,
-                                file = resolveImage(block.path),
-                                enabled = enabled,
-                                dragHandleModifier = Modifier.longPressDraggableHandle(),
-                                onWidthChange = { onImageWidth(globalIndex, it) },
-                                onDelete = { onDelete(globalIndex) },
-                                onFocus = { onFocus(globalIndex) }
-                            )
-                        }
-                    }
-                }
+        pageBlocks.forEachIndexed { localIndex, block ->
+            if (block is WriteBlock.Image) {
+                val globalIndex = globalStartIndex + localIndex
+                ImageBlockEditor(
+                    path = block.path,
+                    widthPercent = block.widthPercent,
+                    file = resolveImage(block.path),
+                    enabled = enabled,
+                    onWidthChange = { onImageWidth(globalIndex, it) },
+                    onDelete = { onDelete(globalIndex) }
+                )
             }
         }
+
+        BasicTextField(
+            value = pageText,
+            onValueChange = { onPageTextChange(it, charBudget) },
+            enabled = enabled,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                lineHeight = lineHeight,
+                color = MaterialTheme.colorScheme.onSurface
+            ),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .onSizeChanged { size ->
+                    val linePx = with(density) { lineHeight.toPx() }
+                    val charPx = with(density) { 16.sp.toPx() }
+                    val lines = (size.height / linePx).toInt().coerceAtLeast(1)
+                    val charsPerLine = (size.width / charPx).toInt().coerceAtLeast(12)
+                    charBudget = (lines * charsPerLine * 0.92).toInt().coerceAtLeast(100)
+                },
+            decorationBox = { inner ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                ) {
+                    if (pageText.isEmpty()) {
+                        Text(
+                            "在这里写…写满会自动翻页；「下一章」换一张新纸",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = lineHeight)
+                        )
+                    }
+                    inner()
+                }
+            }
+        )
     }
 }
 
@@ -703,14 +592,13 @@ private fun ImageBlockEditor(
     widthPercent: Float,
     file: java.io.File?,
     enabled: Boolean,
-    dragHandleModifier: Modifier,
     onWidthChange: (Float) -> Unit,
-    onDelete: () -> Unit,
-    onFocus: () -> Unit
+    onDelete: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -718,13 +606,8 @@ private fun ImageBlockEditor(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Default.DragHandle,
-                contentDescription = "长按拖动",
-                modifier = dragHandleModifier.padding(end = 8.dp)
-            )
             Text(
-                "图片 · 长按左侧拖动",
+                "图片",
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.weight(1f)
             )
@@ -742,9 +625,8 @@ private fun ImageBlockEditor(
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxWidth(widthPercent.coerceIn(0.3f, 1f))
-                    .heightIn(max = 280.dp)
+                    .heightIn(max = 180.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
             )
         }
         Text(
@@ -754,10 +636,7 @@ private fun ImageBlockEditor(
         )
         Slider(
             value = widthPercent,
-            onValueChange = {
-                onFocus()
-                onWidthChange(it)
-            },
+            onValueChange = onWidthChange,
             valueRange = 0.3f..1f,
             enabled = enabled
         )

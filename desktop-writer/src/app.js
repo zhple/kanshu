@@ -24,10 +24,9 @@ const state = {
   sessionGain: 0,
   dailyDone: 0,
   dailyDate: '',
-  aiMode: null,
-  aiPreview: '',
   autoSaveTimer: null,
-  activeEditor: null
+  activeEditor: null,
+  resizeObserver: null
 };
 
 const el = {
@@ -46,11 +45,6 @@ const el = {
   dirtyBadge: document.getElementById('dirty-badge'),
   sidebar: document.getElementById('sidebar'),
   settingsDialog: document.getElementById('settings-dialog'),
-  aiDialog: document.getElementById('ai-dialog'),
-  aiPreviewDialog: document.getElementById('ai-preview-dialog'),
-  aiPreviewBody: document.getElementById('ai-preview-body'),
-  aiHint: document.getElementById('ai-hint'),
-  aiDialogTitle: document.getElementById('ai-dialog-title'),
   newDraftDialog: document.getElementById('new-draft-dialog'),
   newDraftTitle: document.getElementById('new-draft-title'),
   newDraftFolder: document.getElementById('new-draft-folder'),
@@ -63,7 +57,6 @@ const el = {
   cfgOwner: document.getElementById('cfg-owner'),
   cfgRepo: document.getElementById('cfg-repo'),
   cfgBranch: document.getElementById('cfg-branch'),
-  cfgDeepseek: document.getElementById('cfg-deepseek'),
   cfgGoal: document.getElementById('cfg-goal'),
   cfgAutoUpdate: document.getElementById('cfg-auto-update'),
   appVersion: document.getElementById('app-version')
@@ -459,26 +452,75 @@ async function loadDraft(remoteId) {
   }
 }
 
+function getViewportCharBudget(ta) {
+  if (!ta || ta.clientHeight < 40) return PAGE_CHAR_BUDGET;
+  const style = getComputedStyle(ta);
+  const lineHeight = parseFloat(style.lineHeight) || 28;
+  const fontSize = parseFloat(style.fontSize) || 16;
+  const lines = Math.floor((ta.clientHeight - 24) / lineHeight);
+  const charsPerLine = Math.max(12, Math.floor(ta.clientWidth / (fontSize * 0.95)));
+  return Math.max(100, Math.floor(lines * charsPerLine * 0.92));
+}
+
+function splitOverflowForEditor(ta, text) {
+  const budget = getViewportCharBudget(ta);
+  let result = splitTextOverflow(text, budget);
+  if (!result.overflow && ta.scrollHeight > ta.clientHeight + 4) {
+    let lo = 0;
+    let hi = text.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      ta.value = text.slice(0, mid);
+      if (ta.scrollHeight > ta.clientHeight + 4) hi = mid - 1;
+      else lo = mid;
+    }
+    const keep = text.slice(0, lo).trimEnd();
+    const overflow = text.slice(lo).trimStart();
+    if (overflow) result = { keep, overflow };
+  }
+  return result;
+}
+
+function applyPageOverflow(keep, overflow) {
+  const ch = currentChapter();
+  if (!ch.pages) ch.pages = [''];
+  ch.pages[state.pageIndex] = keep;
+  if (state.pageIndex + 1 < ch.pages.length) {
+    const tail = ch.pages[state.pageIndex + 1] || '';
+    ch.pages[state.pageIndex + 1] = overflow + (tail ? `\n\n${tail}` : '');
+  } else {
+    ch.pages.push(overflow);
+  }
+  state.pageIndex++;
+  state.dirty = true;
+  state.autoFocusEditor = true;
+  render();
+  setStatus('本页已满，已自动翻到下一页');
+}
+
+function setupEditorResize(ta) {
+  if (state.resizeObserver) state.resizeObserver.disconnect();
+  state.resizeObserver = new ResizeObserver(() => {
+    if (state.activeEditor !== ta || !ta.value) return;
+    const { overflow } = splitOverflowForEditor(ta, ta.value);
+    if (overflow) {
+      const { keep } = splitOverflowForEditor(ta, ta.value);
+      applyPageOverflow(keep, overflow);
+    }
+  });
+  state.resizeObserver.observe(ta);
+  if (el.editorPane) state.resizeObserver.observe(el.editorPane);
+}
+
 function handlePageInput(ta) {
   state.activeEditor = ta;
   const text = ta.value;
   const ch = currentChapter();
   if (!ch.pages) ch.pages = [''];
 
-  const { keep, overflow } = splitTextOverflow(text, PAGE_CHAR_BUDGET);
+  const { keep, overflow } = splitOverflowForEditor(ta, text);
   if (overflow) {
-    ch.pages[state.pageIndex] = keep;
-    if (state.pageIndex + 1 < ch.pages.length) {
-      const tail = ch.pages[state.pageIndex + 1] || '';
-      ch.pages[state.pageIndex + 1] = overflow + (tail ? `\n\n${tail}` : '');
-    } else {
-      ch.pages.push(overflow);
-    }
-    state.pageIndex++;
-    state.dirty = true;
-    state.autoFocusEditor = true;
-    render();
-    setStatus('本页已满，已自动翻到下一页');
+    applyPageOverflow(keep, overflow);
     return;
   }
 
@@ -562,6 +604,7 @@ function render() {
     state.autoFocusEditor = false;
     ta.focus();
   }
+  setupEditorResize(ta);
 }
 
 async function saveDraft(fromAuto = false) {
@@ -614,71 +657,6 @@ async function uploadGithub() {
   } catch (e) {
     setStatus(e.message || '上传失败', true);
   }
-}
-
-function openAiDialog(mode) {
-  if (!state.config?.deepseekApiKey) {
-    setStatus('请先在设置里填写 DeepSeek API Key', true);
-    return;
-  }
-  state.aiMode = mode;
-  el.aiDialogTitle.textContent = ({
-    CONTINUE: 'AI 续写',
-    POLISH: 'AI 润色',
-    EXPAND: 'AI 扩写'
-  })[mode] || 'AI 助手';
-  el.aiHint.value = '';
-  el.aiDialog.showModal();
-}
-
-async function runAiAssist(hint) {
-  const mode = state.aiMode;
-  if (!mode) return;
-  syncEditorToChapter();
-  const ch = currentChapter();
-  const focusText = (ch.pages || [''])[state.pageIndex] || '';
-  if (mode !== 'CONTINUE' && !focusText.trim()) {
-    setStatus('润色/扩写需要当前页有内容', true);
-    return;
-  }
-  const blocks = allBlocks();
-  const preceding = serialize(blocks).slice(-1800);
-  setStatus('AI 生成中…');
-  try {
-    const text = await window.kanshu.writeAssist({
-      mode,
-      title: el.titleInput.value.trim(),
-      precedingText: preceding,
-      focusText,
-      userHint: hint || ''
-    });
-    state.aiPreview = text;
-    el.aiPreviewBody.textContent = text;
-    el.aiPreviewDialog.showModal();
-    setStatus('已生成，请确认后写入');
-  } catch (e) {
-    setStatus(e.message || 'AI 失败', true);
-  }
-}
-
-function applyAiPreview() {
-  const mode = state.aiMode;
-  const preview = (state.aiPreview || '').trim();
-  if (!mode || !preview) return;
-  syncEditorToChapter();
-  const ch = currentChapter();
-  const cur = (ch.pages || [''])[state.pageIndex] || '';
-  if (mode === 'CONTINUE') {
-    ch.pages[state.pageIndex] = cur.trimEnd() ? `${cur.trimEnd()}\n\n${preview}` : preview;
-  } else {
-    ch.pages[state.pageIndex] = preview;
-  }
-  state.dirty = true;
-  state.aiPreview = '';
-  state.aiMode = null;
-  el.aiPreviewDialog.close();
-  render();
-  setStatus('已写入 AI 结果');
 }
 
 function bindEvents() {
@@ -747,28 +725,6 @@ function bindEvents() {
     render();
   };
 
-  document.getElementById('btn-ai-continue').onclick = () => openAiDialog('CONTINUE');
-  document.getElementById('btn-ai-polish').onclick = () => openAiDialog('POLISH');
-  document.getElementById('btn-ai-expand').onclick = () => openAiDialog('EXPAND');
-  document.getElementById('ai-preview-apply').onclick = applyAiPreview;
-  document.getElementById('ai-preview-discard').onclick = () => {
-    state.aiPreview = '';
-    state.aiMode = null;
-    el.aiPreviewDialog.close();
-  };
-
-  document.getElementById('ai-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const submitter = e.submitter;
-    if (submitter && submitter.value === 'cancel') {
-      el.aiDialog.close();
-      return;
-    }
-    const hint = el.aiHint.value;
-    el.aiDialog.close();
-    await runAiAssist(hint);
-  };
-
   document.getElementById('btn-check-update').onclick = async () => {
     setStatus('正在检查更新…');
     try {
@@ -794,7 +750,6 @@ function bindEvents() {
     el.cfgOwner.value = state.config?.githubOwner || 'zhple';
     el.cfgRepo.value = state.config?.githubRepo || 'kanshu';
     el.cfgBranch.value = state.config?.githubBranch || 'main';
-    el.cfgDeepseek.value = state.config?.deepseekApiKey || '';
     el.cfgGoal.value = String(state.config?.dailyGoal || 1000);
     if (el.cfgAutoUpdate) {
       el.cfgAutoUpdate.checked = state.config?.autoCheckUpdate !== false;
@@ -815,7 +770,6 @@ function bindEvents() {
       githubOwner: el.cfgOwner.value.trim() || 'zhple',
       githubRepo: el.cfgRepo.value.trim() || 'kanshu',
       githubBranch: el.cfgBranch.value.trim() || 'main',
-      deepseekApiKey: el.cfgDeepseek.value.trim(),
       dailyGoal: Math.min(50000, Math.max(100, parseInt(el.cfgGoal.value, 10) || 1000)),
       dailyDate: state.dailyDate || todayKey(),
       dailyDone: state.dailyDone,

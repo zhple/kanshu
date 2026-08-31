@@ -231,24 +231,64 @@ function downloadFile(url, destPath, onProgress) {
 
 async function downloadUpdate(info, onProgress) {
   if (!info?.downloadUrl) throw new Error('没有可下载的安装包');
-  const dir = path.join(app.getPath('temp'), 'kanshu-writer-updates');
-  await fsp.mkdir(dir, { recursive: true });
+
+  let dir = resolveUpdateDownloadDir();
+  try {
+    await fsp.mkdir(dir, { recursive: true });
+    const probe = path.join(dir, `.kanshu-write-test-${Date.now()}`);
+    await fsp.writeFile(probe, 'ok');
+    await fsp.unlink(probe);
+  } catch {
+    dir = path.join(app.getPath('userData'), 'updates');
+    await fsp.mkdir(dir, { recursive: true });
+  }
+
   const fileName = info.fileName || `kanshu-writer-${info.latestVersion}.exe`;
   const dest = path.join(dir, fileName);
-  if (fs.existsSync(dest)) {
-    try { await fsp.unlink(dest); } catch { /* ignore */ }
+  const part = `${dest}.download`;
+
+  for (const p of [part, dest]) {
+    if (fs.existsSync(p)) {
+      try { await fsp.unlink(p); } catch { /* ignore */ }
+    }
   }
-  await downloadFile(info.downloadUrl, dest, onProgress);
+
+  await downloadFile(info.downloadUrl, part, onProgress);
+  try {
+    if (fs.existsSync(dest)) await fsp.unlink(dest);
+  } catch { /* ignore */ }
+  await fsp.rename(part, dest);
   return dest;
 }
 
+/** 安装目录（与当前 exe 同目录）；开发模式用 userData */
+function resolveUpdateDownloadDir() {
+  if (app.isPackaged) {
+    return path.dirname(process.execPath);
+  }
+  return path.join(app.getPath('userData'), 'updates');
+}
+
 function launchInstallerAndQuit(filePath) {
-  const child = spawn(filePath, [], {
+  const installer = path.resolve(filePath);
+  const dir = path.dirname(installer);
+  const helper = path.join(dir, `_kanshu_update_${Date.now()}.cmd`);
+  const q = installer.replace(/"/g, '""');
+  const bat = [
+    '@echo off',
+    `start "" /wait "${q}"`,
+    ':del',
+    `del /f /q "${q}" 2>nul`,
+    `if exist "${q}" (timeout /t 2 /nobreak >nul & goto del)`,
+    'del /f /q "%~f0" 2>nul'
+  ].join('\r\n');
+  fs.writeFileSync(helper, bat, 'utf8');
+  spawn('cmd.exe', ['/c', helper], {
     detached: true,
     stdio: 'ignore',
-    windowsHide: false
-  });
-  child.unref();
+    windowsHide: true,
+    cwd: dir
+  }).unref();
   setTimeout(() => app.quit(), 400);
 }
 
@@ -359,5 +399,6 @@ module.exports = {
   downloadUpdate,
   launchInstallerAndQuit,
   promptAndUpdate,
-  compareSemver
+  compareSemver,
+  resolveUpdateDownloadDir
 };

@@ -51,9 +51,6 @@ data class WriteUiState(
     val focusedBlockIndex: Int = 0,
     val focusMode: Boolean = false,
     val showOutline: Boolean = false,
-    val aiBusy: Boolean = false,
-    val aiPreview: String? = null,
-    val aiMode: DeepSeekClient.WriteAssistMode? = null,
     val statusHint: String? = null,
     val error: String? = null,
     val savedMessage: String? = null,
@@ -74,10 +71,6 @@ class WriteViewModel(
     val uiState: StateFlow<WriteUiState> = _uiState.asStateFlow()
 
     val hasGithubToken: StateFlow<Boolean> = themePreferences.githubToken
-        .map { it.isNotBlank() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
-
-    val hasDeepseekKey: StateFlow<Boolean> = themePreferences.deepseekApiKey
         .map { it.isNotBlank() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
@@ -199,6 +192,43 @@ class WriteViewModel(
         _uiState.update { it.copy(showOutline = show) }
     }
 
+    fun updatePagePlainText(text: String, charBudget: Int = WriteBlocks.PAGE_CHAR_BUDGET) {
+        val state = _uiState.value
+        val page = state.pages.getOrNull(state.pageIndex) ?: return
+        val split = WriteBlocks.splitTextOverflow(text, charBudget)
+        if (split.overflow.isNotEmpty()) {
+            val blocks = state.blocks.toMutableList()
+            WriteBlocks.setPagePlainText(blocks, page, split.keep)
+            val pagesAfterKeep = WriteBlocks.buildPages(blocks)
+            val currentPage = pagesAfterKeep.getOrNull(state.pageIndex) ?: page
+            val insertAt = currentPage.endExclusive.coerceAtMost(blocks.size)
+            blocks.add(insertAt, WriteBlock.Paragraph(split.overflow))
+            val overflowIndex = insertAt
+            _uiState.update {
+                val rebuilt = rebuild(it.copy(blocks = blocks, dirty = true))
+                val pageIdx = rebuilt.pages.indexOfFirst { p ->
+                    overflowIndex in p.startIndex until p.endExclusive
+                }.coerceAtLeast(rebuilt.pageIndex)
+                rebuilt.copy(
+                    pageIndex = pageIdx,
+                    statusHint = "本页已满，已自动翻到下一页"
+                )
+            }
+        } else {
+            markDirty { s ->
+                val blocks = s.blocks.toMutableList()
+                WriteBlocks.setPagePlainText(blocks, page, text)
+                s.copy(blocks = blocks)
+            }
+        }
+    }
+
+    fun pagePlainText(pageIndex: Int = _uiState.value.pageIndex): String {
+        val state = _uiState.value
+        val page = state.pages.getOrNull(pageIndex) ?: return ""
+        return WriteBlocks.pagePlainText(state.blocks, page)
+    }
+
     fun updateParagraph(index: Int, text: String) {
         markDirty { state ->
             val blocks = state.blocks.toMutableList()
@@ -289,33 +319,20 @@ class WriteViewModel(
         }
         markDirty { s ->
             val blocks = s.blocks.toMutableList()
-            val focus = s.focusedBlockIndex.coerceIn(0, blocks.lastIndex)
-            val insertAt = when (val cur = blocks.getOrNull(focus)) {
-                is WriteBlock.Paragraph -> {
-                    val base = cur.text.trimEnd()
-                    blocks[focus] = cur.copy(
-                        text = if (base.isBlank()) heading else "$base\n\n$heading"
-                    )
-                    focus + 1
-                }
-                else -> {
-                    blocks.add(focus + 1, WriteBlock.Paragraph(heading))
-                    focus + 2
-                }
-            }
-            if (insertAt >= blocks.size || blocks.getOrNull(insertAt) !is WriteBlock.Paragraph) {
-                blocks.add(insertAt.coerceAtMost(blocks.size), WriteBlock.Paragraph(""))
-            }
+            blocks += WriteBlock.Paragraph(heading)
+            blocks += WriteBlock.Paragraph("")
             s.copy(
                 blocks = blocks,
-                focusedBlockIndex = insertAt.coerceIn(0, blocks.lastIndex)
+                focusedBlockIndex = blocks.lastIndex
             )
         }
         val rebuilt = _uiState.value
         val pageIdx = rebuilt.pages.indexOfFirst {
             rebuilt.focusedBlockIndex in it.startIndex until it.endExclusive
         }.coerceAtLeast(0)
-        _uiState.update { it.copy(pageIndex = pageIdx) }
+        _uiState.update {
+            it.copy(pageIndex = pageIdx, statusHint = "新章节：$heading（空白页）")
+        }
     }
 
     fun insertImage(contentResolver: ContentResolver, uri: Uri) {
@@ -356,69 +373,6 @@ class WriteViewModel(
     }
 
     fun resolveImageFile(path: String): File? = bookRepository.resolveWriteImage(path)
-
-    fun requestAiAssist(mode: DeepSeekClient.WriteAssistMode, hint: String = "") {
-        viewModelScope.launch {
-            val state = _uiState.value
-            if (state.aiBusy) return@launch
-            _uiState.update { it.copy(aiBusy = true, error = null, aiPreview = null, aiMode = mode) }
-            runCatching {
-                val focus = state.focusedBlockIndex.coerceIn(0, state.blocks.lastIndex)
-                val focusBlock = state.blocks.getOrNull(focus) as? WriteBlock.Paragraph
-                    ?: error("请先聚焦一段文字")
-                val focusText = focusBlock.text.trim()
-                if (mode != DeepSeekClient.WriteAssistMode.CONTINUE && focusText.isBlank()) {
-                    error("润色/扩写需要当前段落有内容")
-                }
-                val preceding = WriteBlocks.serialize(state.blocks.take(focus)).takeLast(2000)
-                deepSeekClient.writeAssist(
-                    mode = mode,
-                    title = state.title,
-                    precedingText = preceding,
-                    focusText = focusText,
-                    userHint = hint
-                )
-            }.onSuccess { text ->
-                _uiState.update {
-                    it.copy(aiBusy = false, aiPreview = text, aiMode = mode)
-                }
-            }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        aiBusy = false,
-                        aiPreview = null,
-                        aiMode = null,
-                        error = e.message ?: "AI 助手失败"
-                    )
-                }
-            }
-        }
-    }
-
-    fun applyAiPreview() {
-        val state = _uiState.value
-        val preview = state.aiPreview?.trim().orEmpty()
-        val mode = state.aiMode ?: return
-        if (preview.isBlank()) return
-        markDirty { s ->
-            val blocks = s.blocks.toMutableList()
-            val focus = s.focusedBlockIndex.coerceIn(0, blocks.lastIndex)
-            val cur = blocks.getOrNull(focus) as? WriteBlock.Paragraph ?: return@markDirty s
-            blocks[focus] = when (mode) {
-                DeepSeekClient.WriteAssistMode.CONTINUE -> {
-                    val base = cur.text.trimEnd()
-                    cur.copy(text = if (base.isBlank()) preview else "$base\n\n$preview")
-                }
-                DeepSeekClient.WriteAssistMode.POLISH,
-                DeepSeekClient.WriteAssistMode.EXPAND -> cur.copy(text = preview)
-            }
-            s.copy(blocks = blocks, aiPreview = null, aiMode = null, statusHint = "已应用 AI 结果")
-        }
-    }
-
-    fun dismissAiPreview() {
-        _uiState.update { it.copy(aiPreview = null, aiMode = null) }
-    }
 
     fun save(navigateAway: Boolean = true) {
         viewModelScope.launch {
