@@ -1,14 +1,14 @@
 {
-  "version": "1.2.7",
-  "tag": "writer-v1.2.7",
-  "htmlUrl": "https://github.com/zhple/kanshu/releases/tag/writer-v1.2.7",
-  "releaseNotes": "修复左侧换书后右侧不刷新、翻页仍显示同一页内容的问题。",
+  "version": "1.2.8",
+  "tag": "writer-v1.2.8",
+  "htmlUrl": "https://github.com/zhple/kanshu/releases/tag/writer-v1.2.8",
+  "releaseNotes": "自动更新下载时显示应用内进度条（百分比与已下载大小）。",
   "setup": {
-    "name": "kanshu-writer-setup-1.2.7.exe",
-    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.7/kanshu-writer-setup-1.2.7.exe"
+    "name": "kanshu-writer-setup-1.2.8.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.8/kanshu-writer-setup-1.2.8.exe"
   },
   "portable": {
-    "name": "kanshu-writer-1.2.7-portable.exe",
-    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.7/kanshu-writer-1.2.7-portable.exe"
+    "name": "kanshu-writer-1.2.8-portable.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.8/kanshu-writer-1.2.8-portable.exe"
   }
 }

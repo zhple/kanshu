@@ -59,7 +59,11 @@ const el = {
   cfgBranch: document.getElementById('cfg-branch'),
   cfgGoal: document.getElementById('cfg-goal'),
   cfgAutoUpdate: document.getElementById('cfg-auto-update'),
-  appVersion: document.getElementById('app-version')
+  appVersion: document.getElementById('app-version'),
+  updateProgress: document.getElementById('update-progress'),
+  updateProgressTitle: document.getElementById('update-progress-title'),
+  updateProgressFill: document.getElementById('update-progress-fill'),
+  updateProgressText: document.getElementById('update-progress-text')
 };
 
 function todayKey() {
@@ -70,6 +74,33 @@ function todayKey() {
 function setStatus(msg, isError = false) {
   el.status.textContent = msg || '';
   el.status.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+}
+
+function showUpdateProgress({ phase, progress = 0, message = '', version = '' } = {}) {
+  if (!el.updateProgress) return;
+  if (phase === 'hide') {
+    el.updateProgress.classList.add('hidden');
+    return;
+  }
+  el.updateProgress.classList.remove('hidden');
+  const pct = Math.round(Math.min(100, Math.max(0, progress * 100)));
+  if (el.updateProgressFill) el.updateProgressFill.style.width = `${pct}%`;
+  if (el.updateProgressText) {
+    el.updateProgressText.textContent = message || `${pct}%`;
+  }
+  if (el.updateProgressTitle) {
+    if (phase === 'complete') {
+      el.updateProgressTitle.textContent = '下载完成';
+    } else if (version) {
+      el.updateProgressTitle.textContent = `正在下载 v${version}`;
+    } else {
+      el.updateProgressTitle.textContent = '正在下载更新';
+    }
+  }
+}
+
+function bindUpdateProgressListener() {
+  window.kanshu.onUpdateDownloadProgress?.((payload) => showUpdateProgress(payload));
 }
 
 function allBlocks() {
@@ -132,6 +163,7 @@ async function init() {
   }
   loadDailyProgress();
   updateWorkspaceLabel();
+  bindUpdateProgressListener();
   bindEvents();
   try {
     await refreshLibraryList();
@@ -737,6 +769,7 @@ function bindEvents() {
     setStatus('正在检查更新…');
     try {
       const result = await window.kanshu.checkUpdate({ prompt: true });
+      showUpdateProgress({ phase: 'hide' });
       if (result?.updateAvailable === false) {
         setStatus(`已是最新版 v${result.info?.currentVersion || ''}`);
       } else if (result?.installing) {
@@ -749,6 +782,7 @@ function bindEvents() {
         setStatus('更新检查完成');
       }
     } catch (e) {
+      showUpdateProgress({ phase: 'hide' });
       setStatus(e.message || '检查更新失败', true);
     }
   };

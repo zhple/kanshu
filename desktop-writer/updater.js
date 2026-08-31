@@ -212,7 +212,10 @@ function downloadFile(url, destPath, onProgress) {
           const out = fs.createWriteStream(destPath);
           res.on('data', (chunk) => {
             received += chunk.length;
-            if (onProgress && total > 0) onProgress(received / total);
+            if (onProgress) {
+              const progress = total > 0 ? received / total : Math.min(0.05, received / (50 * 1024 * 1024));
+              onProgress(progress, received, total);
+            }
           });
           res.pipe(out);
           out.on('finish', () => out.close(() => resolve(destPath)));
@@ -267,6 +270,19 @@ function resolveUpdateDownloadDir() {
     return path.dirname(process.execPath);
   }
   return path.join(app.getPath('userData'), 'updates');
+}
+
+function formatBytes(n) {
+  const v = Number(n) || 0;
+  if (v < 1024) return `${v} B`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`;
+  return `${(v / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function emitUpdateProgress(win, payload) {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('update-download-progress', payload);
+  }
 }
 
 function launchInstallerAndQuit(filePath) {
@@ -347,14 +363,37 @@ async function promptAndUpdate(parentWindow, { silentIfCurrent = true, token = '
     if (parentWindow && !parentWindow.isDestroyed()) {
       parentWindow.setProgressBar(0.05);
     }
-    const filePath = await downloadUpdate(info, (p) => {
+    emitUpdateProgress(parentWindow, {
+      phase: 'downloading',
+      progress: 0,
+      message: `正在下载 v${info.latestVersion}…`,
+      version: info.latestVersion
+    });
+    const filePath = await downloadUpdate(info, (p, received, total) => {
       if (parentWindow && !parentWindow.isDestroyed()) {
         parentWindow.setProgressBar(Math.min(0.99, Math.max(0.05, p)));
       }
+      const pct = Math.round(Math.min(99, Math.max(0, p * 100)));
+      let message = `正在下载 ${pct}%`;
+      if (total > 0) {
+        message += `（${formatBytes(received)} / ${formatBytes(total)}）`;
+      }
+      emitUpdateProgress(parentWindow, {
+        phase: 'downloading',
+        progress: p,
+        message,
+        version: info.latestVersion
+      });
     });
     if (parentWindow && !parentWindow.isDestroyed()) {
       parentWindow.setProgressBar(-1);
     }
+    emitUpdateProgress(parentWindow, {
+      phase: 'complete',
+      progress: 1,
+      message: '下载完成',
+      version: info.latestVersion
+    });
 
     if (info.kind === 'setup') {
       const confirm = await dialog.showMessageBox(parentWindow, {
@@ -365,6 +404,7 @@ async function promptAndUpdate(parentWindow, { silentIfCurrent = true, token = '
         defaultId: 0,
         cancelId: 1
       });
+      emitUpdateProgress(parentWindow, { phase: 'hide' });
       if (confirm.response === 0) {
         launchInstallerAndQuit(filePath);
         return { ok: true, updateAvailable: true, installing: true, info };
@@ -373,6 +413,7 @@ async function promptAndUpdate(parentWindow, { silentIfCurrent = true, token = '
       return { ok: true, updateAvailable: true, savedPath: filePath, info };
     }
 
+    emitUpdateProgress(parentWindow, { phase: 'hide' });
     await dialog.showMessageBox(parentWindow, {
       type: 'info',
       title: '便携版已下载',
@@ -385,6 +426,7 @@ async function promptAndUpdate(parentWindow, { silentIfCurrent = true, token = '
     if (parentWindow && !parentWindow.isDestroyed()) {
       parentWindow.setProgressBar(-1);
     }
+    emitUpdateProgress(parentWindow, { phase: 'hide' });
     await dialog.showMessageBox(parentWindow, {
       type: 'error',
       title: '更新失败',

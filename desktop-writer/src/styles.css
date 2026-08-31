@@ -136,6 +136,48 @@ body {
 }
 .dirty-badge.hidden { display: none; }
 
+.update-progress {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 14, 12, 0.45);
+  backdrop-filter: blur(2px);
+}
+.update-progress.hidden { display: none; }
+.update-progress-card {
+  width: min(420px, calc(100vw - 48px));
+  padding: 20px 22px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+}
+.update-progress-title {
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.update-progress-track {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.update-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), #5a9f74);
+  transition: width 0.2s ease;
+}
+.update-progress-text {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  text-align: center;
+}
+
 body.focus-mode .sidebar { display: none; }
 body.focus-mode .toolbar-actions .btn.secondary:not(#btn-save),
 body.focus-mode #btn-upload,

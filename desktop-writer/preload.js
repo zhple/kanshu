@@ -10,6 +10,11 @@ contextBridge.exposeInMainWorld('kanshu', {
     ipcRenderer.on('library-sync-progress', listener);
     return () => ipcRenderer.removeListener('library-sync-progress', listener);
   },
+  onUpdateDownloadProgress: (cb) => {
+    const listener = (_e, payload) => cb(payload);
+    ipcRenderer.on('update-download-progress', listener);
+    return () => ipcRenderer.removeListener('update-download-progress', listener);
+  },
   getConfig: () => ipcRenderer.invoke('get-config'),
   saveConfig: (cfg) => ipcRenderer.invoke('save-config', cfg),
   pickWorkspace: () => ipcRenderer.invoke('pick-workspace'),
