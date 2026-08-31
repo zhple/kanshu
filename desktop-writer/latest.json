@@ -1,14 +1,14 @@
 {
-  "version": "1.2.3",
-  "tag": "writer-v1.2.3",
-  "htmlUrl": "https://github.com/zhple/kanshu/releases/tag/writer-v1.2.3",
-  "releaseNotes": "修复检查更新 HTTP 403：API 失败时回退 latest.json；支持使用已配置的 GitHub Token。",
+  "version": "1.2.4",
+  "tag": "writer-v1.2.4",
+  "htmlUrl": "https://github.com/zhple/kanshu/releases/tag/writer-v1.2.4",
+  "releaseNotes": "写作区满屏不可拉伸、写满自动翻页；修复下一章；书库按分类展示；可阅读 TXT；文稿改名同步 catalog。",
   "setup": {
-    "name": "kanshu-writer-setup-1.2.3.exe",
-    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.3/kanshu-writer-setup-1.2.3.exe"
+    "name": "kanshu-writer-setup-1.2.4.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.4/kanshu-writer-setup-1.2.4.exe"
   },
   "portable": {
-    "name": "kanshu-writer-1.2.3-portable.exe",
-    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.3/kanshu-writer-1.2.3-portable.exe"
+    "name": "kanshu-writer-1.2.4-portable.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.4/kanshu-writer-1.2.4-portable.exe"
   }
 }

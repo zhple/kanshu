@@ -44,6 +44,50 @@ function assetsDir(booksDir) {
   return path.join(booksDir, 'write_assets');
 }
 
+async function readLocalCatalog(booksDir) {
+  const catalogPath = path.join(booksDir, 'catalog.json');
+  try {
+    return JSON.parse(await fsp.readFile(catalogPath, 'utf8'));
+  } catch {
+    return { version: 1, folders: ['仓库书'], books: [] };
+  }
+}
+
+async function writeLocalCatalog(booksDir, root) {
+  root.version = (root.version || 0) + 1;
+  await fsp.writeFile(
+    path.join(booksDir, 'catalog.json'),
+    JSON.stringify(root, null, 2),
+    'utf8'
+  );
+}
+
+async function upsertLocalCatalog(booksDir, spec) {
+  const root = await readLocalCatalog(booksDir);
+  if (!Array.isArray(root.folders)) root.folders = ['仓库书'];
+  const folder = (spec.folder || '仓库书').trim() || '仓库书';
+  if (!root.folders.includes(folder)) root.folders.push(folder);
+  if (!Array.isArray(root.books)) root.books = [];
+  const idx = root.books.findIndex((b) => b.id === spec.id);
+  const prev = idx >= 0 ? root.books[idx] : {};
+  const entry = {
+    ...prev,
+    id: spec.id,
+    title: spec.title || prev.title || spec.id,
+    author: spec.author || prev.author || '我写的',
+    file: spec.file || prev.file || `${spec.id}.txt`,
+    format: spec.format || prev.format || 'TXT',
+    folder,
+    chapterIndex: prev.chapterIndex ?? 0,
+    scrollOffset: prev.scrollOffset ?? 0,
+    lastReadAt: spec.lastReadAt ?? prev.lastReadAt ?? Date.now()
+  };
+  if (idx >= 0) root.books[idx] = entry;
+  else root.books.push(entry);
+  await writeLocalCatalog(booksDir, root);
+  return entry;
+}
+
 function buildAppMenu() {
   const template = [
     {
@@ -239,17 +283,19 @@ ipcMain.handle('read-draft', async (_e, remoteId) => {
   const draftPath = path.join(booksDir, `${remoteId}.draft.txt`);
   const content = await fsp.readFile(draftPath, 'utf8');
   let title = remoteId;
+  let folder = '仓库书';
   try {
     const catalogRaw = await fsp.readFile(path.join(booksDir, 'catalog.json'), 'utf8');
     const catalog = JSON.parse(catalogRaw);
     const hit = (catalog.books || []).find(b => b.id === remoteId);
     if (hit?.title) title = hit.title;
+    if (hit?.folder) folder = hit.folder;
   } catch { /* optional */ }
   if (title === remoteId) {
     const head = content.split(/\r?\n/).map(l => l.trim()).find(l => l && !l.startsWith('[[IMG:'));
     if (head) title = head.replace(/^#+\s*/, '').slice(0, 40);
   }
-  return { content, draftPath, booksDir, title };
+  return { content, draftPath, booksDir, title, folder };
 });
 
 ipcMain.handle('save-draft', async (_e, payload) => {
@@ -268,10 +314,22 @@ ipcMain.handle('save-draft', async (_e, payload) => {
     await fsp.writeFile(txtPath, '\uFEFF' + plain, 'utf8');
   }
 
+  const catalog = await readLocalCatalog(booksDir);
+  const existing = catalog.books?.find((b) => b.id === remoteId);
+  await upsertLocalCatalog(booksDir, {
+    id: remoteId,
+    title: title || remoteId,
+    folder: existing?.folder || payload.folder || '仓库书',
+    file: existing?.file || `${remoteId}.txt`,
+    format: existing?.format || 'TXT'
+  });
+
   return { draftPath, title, remoteId, booksDir };
 });
 
-ipcMain.handle('create-draft', async (_e, title) => {
+ipcMain.handle('create-draft', async (_e, payload) => {
+  const title = typeof payload === 'string' ? payload : payload?.title;
+  const folder = typeof payload === 'object' ? payload?.folder : '';
   const cfg = await readConfig();
   if (!cfg.workspace?.trim()) {
     throw new Error('请先点击「打开目录」选择 kanshu 仓库目录');
@@ -284,7 +342,36 @@ ipcMain.handle('create-draft', async (_e, title) => {
   const remoteId = 'user-' + randomUUID().replace(/-/g, '').slice(0, 10);
   const draftPath = path.join(booksDir, `${remoteId}.draft.txt`);
   await fsp.writeFile(draftPath, '', 'utf8');
-  return { remoteId, title: title || '未命名', draftPath, booksDir };
+  const safeTitle = (title || '未命名').trim() || '未命名';
+  const safeFolder = (folder || '仓库书').trim() || '仓库书';
+  await upsertLocalCatalog(booksDir, {
+    id: remoteId,
+    title: safeTitle,
+    folder: safeFolder,
+    file: `${remoteId}.txt`,
+    format: 'TXT'
+  });
+  return { remoteId, title: safeTitle, folder: safeFolder, draftPath, booksDir };
+});
+
+ipcMain.handle('read-book', async (_e, remoteId) => {
+  const cfg = await readConfig();
+  if (!cfg.workspace?.trim()) throw new Error('请先选择工作目录');
+  const booksDir = resolveBooksDir(cfg.workspace);
+  const catalog = await readLocalCatalog(booksDir);
+  const book = (catalog.books || []).find((b) => b.id === remoteId);
+  if (!book?.file) throw new Error('catalog 中找不到这本书');
+  const filePath = path.join(booksDir, book.file);
+  if (!fs.existsSync(filePath)) throw new Error(`文件缺失：${book.file}`);
+  const raw = await fsp.readFile(filePath, 'utf8');
+  return {
+    content: raw.replace(/^\uFEFF/, ''),
+    title: book.title || remoteId,
+    author: book.author || '',
+    folder: book.folder || '仓库书',
+    format: (book.format || 'TXT').toUpperCase(),
+    booksDir
+  };
 });
 
 ipcMain.handle('pick-image', async (_e, remoteId) => {
@@ -342,13 +429,26 @@ ipcMain.handle('github-upload', async (_e, payload) => {
     }
   }
 
+  const catalog = await readLocalCatalog(booksDir);
+  const existing = catalog.books?.find((b) => b.id === remoteId);
+  const folder = existing?.folder || '仓库书';
+
   await gh.upsertCatalog(remoteId, {
     id: remoteId,
     title,
-    author: '我写的',
-    file: `${remoteId}.txt`,
-    format: 'TXT',
-    folder: '仓库书'
+    author: existing?.author || '我写的',
+    file: existing?.file || `${remoteId}.txt`,
+    format: existing?.format || 'TXT',
+    folder
+  });
+
+  await upsertLocalCatalog(booksDir, {
+    id: remoteId,
+    title,
+    folder,
+    file: existing?.file || `${remoteId}.txt`,
+    format: existing?.format || 'TXT',
+    author: existing?.author || '我写的'
   });
 
   return '已上传到 GitHub default-books/';
@@ -450,6 +550,8 @@ function createGithubClient(cfg) {
     }
     if (!Array.isArray(root.folders)) root.folders = ['仓库书'];
     if (!Array.isArray(root.books)) root.books = [];
+    const folder = (spec.folder || '仓库书').trim() || '仓库书';
+    if (!root.folders.includes(folder)) root.folders.push(folder);
     const idx = root.books.findIndex(b => b.id === remoteId);
     const entry = {
       id: remoteId,

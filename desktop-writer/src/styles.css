@@ -30,7 +30,7 @@ body {
   background: var(--bg);
   color: var(--text);
 }
-.app { display: flex; min-height: 100vh; }
+.app { display: flex; height: 100vh; min-height: 100vh; overflow: hidden; }
 
 .sidebar {
   width: 280px;
@@ -156,6 +156,8 @@ body.focus-mode .editor-pane { padding: 28px 12vw; }
   padding: 12px;
   margin: 12px 0;
 }
+dialog input,
+dialog select,
 dialog textarea {
   width: 100%;
   padding: 10px 12px;
@@ -167,7 +169,7 @@ dialog textarea {
   resize: vertical;
 }
 
-.editor-pane { flex: 1; display: flex; flex-direction: column; padding: 20px 24px; min-width: 0; }
+.editor-pane { flex: 1; display: flex; flex-direction: column; padding: 20px 24px; min-width: 0; min-height: 0; overflow: hidden; }
 .toolbar {
   display: flex;
   gap: 12px;
@@ -190,13 +192,83 @@ dialog textarea {
 .sep { width: 1px; height: 20px; background: var(--border); }
 .page-title { color: var(--muted); margin: 0 0 12px; font-size: 0.9rem; }
 
+.draft-list .folder-header {
+  padding: 8px 12px 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: default;
+  border: none;
+  margin-top: 6px;
+}
+.draft-list .folder-header:hover { background: transparent; }
+
 .blocks {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-bottom: 40px;
+  gap: 8px;
+}
+
+.page-editor-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+textarea.page-editor,
+div.page-reader {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  border: none;
+  border-radius: 12px;
+  padding: 16px 18px;
+  font: inherit;
+  line-height: 1.75;
+  background: var(--panel);
+  color: var(--text);
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+div.page-reader {
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.page-hint {
+  margin: auto;
+  text-align: center;
+  color: var(--muted);
+}
+
+.image-inline {
+  flex-shrink: 0;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.image-inline img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.editor-pane.read-mode #btn-save,
+.editor-pane.read-mode #btn-upload,
+.editor-pane.read-mode #btn-chapter,
+.editor-pane.read-mode #btn-image,
+.editor-pane.read-mode #btn-ai-continue,
+.editor-pane.read-mode #btn-ai-polish,
+.editor-pane.read-mode #btn-ai-expand {
+  display: none;
 }
 
 .block-card {
@@ -216,7 +288,7 @@ dialog textarea {
 textarea.paragraph {
   width: 100%;
   min-height: 120px;
-  resize: vertical;
+  resize: none;
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px;

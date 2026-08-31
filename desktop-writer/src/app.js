@@ -1,6 +1,7 @@
 import {
   parse, serialize, buildPages, nextChapterTitle, newId,
-  charCount, outline, extractTitleFromContent
+  charCount, outline, extractTitleFromContent,
+  pagePlainText, setPagePlainText, splitTextOverflow, PAGE_CHAR_BUDGET
 } from './write-blocks.js';
 
 const state = {
@@ -10,10 +11,13 @@ const state = {
   pages: [],
   pageIndex: 0,
   booksDir: '',
+  bookFolder: '仓库书',
+  libraryFolders: ['仓库书'],
+  viewMode: 'idle',
   dirty: false,
   config: null,
   focusMode: false,
-  focusedLocal: 0,
+  autoFocusEditor: false,
   baselineChars: 0,
   sessionGain: 0,
   dailyDone: 0,
@@ -45,7 +49,12 @@ const el = {
   aiDialogTitle: document.getElementById('ai-dialog-title'),
   newDraftDialog: document.getElementById('new-draft-dialog'),
   newDraftTitle: document.getElementById('new-draft-title'),
+  newDraftFolder: document.getElementById('new-draft-folder'),
   newDraftForm: document.getElementById('new-draft-form'),
+  chapterDialog: document.getElementById('chapter-dialog'),
+  chapterSubtitle: document.getElementById('chapter-subtitle'),
+  chapterForm: document.getElementById('chapter-form'),
+  editorPane: document.querySelector('.editor-pane'),
   cfgToken: document.getElementById('cfg-token'),
   cfgOwner: document.getElementById('cfg-owner'),
   cfgRepo: document.getElementById('cfg-repo'),
@@ -79,16 +88,18 @@ function currentPageBlocks() {
   return state.blocks.slice(page.startIndex, page.endExclusive);
 }
 
-function globalIndexFromPageLocal(localIndex) {
-  const page = state.pages[state.pageIndex];
-  return page.startIndex + localIndex;
-}
-
 function focusedGlobalIndex() {
   const page = state.pages[state.pageIndex];
   if (!page) return 0;
-  const local = Math.min(Math.max(0, state.focusedLocal), Math.max(0, page.endExclusive - page.startIndex - 1));
-  return page.startIndex + local;
+  for (let i = page.startIndex; i < page.endExclusive; i++) {
+    if (state.blocks[i]?.type === 'paragraph') return i;
+  }
+  return page.startIndex;
+}
+
+function updateEditorChrome() {
+  el.editorPane?.classList.toggle('read-mode', state.viewMode === 'read');
+  if (el.titleInput) el.titleInput.readOnly = state.viewMode === 'read';
 }
 
 async function init() {
@@ -165,7 +176,7 @@ function renderOutline() {
     li.innerHTML = `<div class="name">${escapeHtml(item.title)}</div><div class="meta">第 ${item.pageIndex + 1} 页 · ${item.charCount} 字</div>`;
     li.onclick = () => {
       state.pageIndex = item.pageIndex;
-      state.focusedLocal = 0;
+      state.autoFocusEditor = state.viewMode === 'write';
       render();
     };
     el.outlineList.appendChild(li);
@@ -174,7 +185,8 @@ function renderOutline() {
 
 async function refreshLibraryList() {
   if (!el.libraryList) return;
-  const { books, version } = await window.kanshu.listLibrary();
+  const { books, folders, version } = await window.kanshu.listLibrary();
+  state.libraryFolders = folders?.length ? folders : ['仓库书'];
   if (el.libraryVersion) {
     el.libraryVersion.textContent = version ? `v${version}` : '';
   }
@@ -183,52 +195,116 @@ async function refreshLibraryList() {
     el.libraryList.innerHTML = '<li class="meta" style="padding:12px">点「同步书库」拉取朋友上传的书</li>';
     return;
   }
+
+  const folderNames = [...state.libraryFolders];
   for (const book of books) {
-    const li = document.createElement('li');
-    li.dataset.remoteId = book.id;
-    if (book.id === state.remoteId) li.classList.add('active');
-    const label = book.title || book.id;
-    const tags = [];
-    if (book.hasDraft) tags.push('可编辑');
-    else if (book.hasReadable) tags.push('只读');
-    if (book.localOnly) tags.push('本地');
-    const meta = tags.length ? tags.join(' · ') : (book.author || book.format || '');
-    li.innerHTML = `<div class="name">${escapeHtml(label)}</div><div class="meta">${escapeHtml(meta)}</div>`;
-    li.onclick = () => openLibraryBook(book);
-    el.libraryList.appendChild(li);
+    const f = book.folder || '仓库书';
+    if (!folderNames.includes(f)) folderNames.push(f);
   }
+
+  for (const folder of folderNames) {
+    const inFolder = books.filter((b) => (b.folder || '仓库书') === folder);
+    if (!inFolder.length) continue;
+    const header = document.createElement('li');
+    header.className = 'folder-header';
+    header.textContent = folder;
+    el.libraryList.appendChild(header);
+    for (const book of inFolder) {
+      el.libraryList.appendChild(libraryBookItem(book));
+    }
+  }
+}
+
+function libraryBookItem(book) {
+  const li = document.createElement('li');
+  li.dataset.remoteId = book.id;
+  if (book.id === state.remoteId) li.classList.add('active');
+  const label = book.title || book.id;
+  const tags = [];
+  if (book.hasDraft) tags.push('可编辑');
+  else if (book.hasReadable) tags.push('阅读');
+  if (book.localOnly) tags.push('本地');
+  const meta = tags.length ? tags.join(' · ') : (book.author || book.format || '');
+  li.innerHTML = `<div class="name">${escapeHtml(label)}</div><div class="meta">${escapeHtml(meta)}</div>`;
+  li.onclick = () => openLibraryBook(book);
+  return li;
 }
 
 async function openLibraryBook(book) {
-  if (!book.hasDraft && !book.editable) {
-    setStatus(`「${book.title || book.id}」暂无 draft 文稿，可在手机端阅读`, true);
+  if (book.hasDraft || book.editable) {
+    await loadDraft(book.id);
     return;
   }
-  await loadDraft(book.id);
+  if (book.hasReadable && ((book.format || '').toUpperCase() === 'TXT' || book.file?.endsWith('.txt'))) {
+    await openReader(book.id);
+    return;
+  }
+  setStatus(`「${book.title || book.id}」暂无 draft，电脑端暂不支持阅读 ${book.format || '该格式'}`, true);
 }
 
-async function createNewDraft(title) {
+async function openReader(remoteId) {
+  if (state.dirty && !confirm('当前文稿未保存，确定切换？')) return;
+  try {
+    const { content, title, booksDir, folder } = await window.kanshu.readBook(remoteId);
+    state.viewMode = 'read';
+    state.remoteId = remoteId;
+    state.booksDir = booksDir;
+    state.title = title;
+    state.bookFolder = folder || '仓库书';
+    state.blocks = parse(content);
+    state.pageIndex = 0;
+    state.dirty = false;
+    el.titleInput.value = title;
+    rebuildPages();
+    render();
+    await refreshLibraryList();
+    setStatus('阅读模式（保存请先在手机端或上传后编辑 draft）');
+  } catch (e) {
+    setStatus(e.message || '打开失败', true);
+  }
+}
+
+async function createNewDraft(title, folder = '仓库书') {
   const trimmed = (title || '').trim() || '未命名';
+  const catFolder = (folder || '仓库书').trim() || '仓库书';
   if (!state.config?.workspace?.trim()) {
     setStatus('请先点击「打开目录」选择 kanshu 仓库目录', true);
     return;
   }
   try {
-    const { remoteId } = await window.kanshu.createDraft(trimmed);
+    const { remoteId, booksDir, folder: savedFolder } = await window.kanshu.createDraft({
+      title: trimmed,
+      folder: catFolder
+    });
+    state.viewMode = 'write';
     state.remoteId = remoteId;
     state.title = trimmed;
+    state.bookFolder = savedFolder || catFolder;
+    state.booksDir = booksDir;
     state.blocks = [{ type: 'paragraph', text: '', id: newId() }];
     state.pageIndex = 0;
     state.dirty = false;
     state.baselineChars = 0;
     state.sessionGain = 0;
+    state.autoFocusEditor = true;
     el.titleInput.value = trimmed;
     rebuildPages();
     render();
     await refreshLibraryList();
-    setStatus('已创建新文稿');
+    setStatus('已创建新文稿，标题可在顶部修改');
   } catch (e) {
     setStatus(e.message || '创建失败', true);
+  }
+}
+
+function populateFolderSelect() {
+  if (!el.newDraftFolder) return;
+  el.newDraftFolder.innerHTML = '';
+  for (const name of state.libraryFolders) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    el.newDraftFolder.appendChild(opt);
   }
 }
 
@@ -237,9 +313,39 @@ function openNewDraftDialog() {
     setStatus('请先点击「打开目录」选择 kanshu 仓库目录', true);
     return;
   }
+  populateFolderSelect();
   if (el.newDraftTitle) el.newDraftTitle.value = '未命名';
   el.newDraftDialog?.showModal();
   setTimeout(() => el.newDraftTitle?.select(), 0);
+}
+
+function openChapterDialog() {
+  if (state.viewMode !== 'write' || !state.remoteId) {
+    setStatus('请先打开或新建一篇文稿', true);
+    return;
+  }
+  if (el.chapterSubtitle) el.chapterSubtitle.value = '';
+  el.chapterDialog?.showModal();
+  setTimeout(() => el.chapterSubtitle?.focus(), 0);
+}
+
+function insertNextChapter(subtitle) {
+  const title = nextChapterTitle(state.blocks, subtitle);
+  const last = state.blocks[state.blocks.length - 1];
+  if (last.type === 'paragraph' && !last.text.trim()) {
+    state.blocks.pop();
+  }
+  state.blocks.push({ type: 'paragraph', text: title, id: newId() });
+  state.blocks.push({ type: 'paragraph', text: '', id: newId() });
+  state.dirty = true;
+  rebuildPages();
+  const emptyIdx = state.blocks.length - 1;
+  state.pageIndex = Math.max(0, state.pages.findIndex(
+    (p) => emptyIdx >= p.startIndex && emptyIdx < p.endExclusive
+  ));
+  state.autoFocusEditor = true;
+  render();
+  setStatus(`已插入 ${title}`);
 }
 
 async function syncLibraryFromRemote() {
@@ -263,15 +369,18 @@ async function syncLibraryFromRemote() {
 async function loadDraft(remoteId) {
   if (state.dirty && !confirm('当前文稿未保存，确定切换？')) return;
   try {
-    const { content, booksDir, title } = await window.kanshu.readDraft(remoteId);
+    const { content, booksDir, title, folder } = await window.kanshu.readDraft(remoteId);
+    state.viewMode = 'write';
     state.remoteId = remoteId;
     state.booksDir = booksDir;
+    state.bookFolder = folder || '仓库书';
     state.blocks = parse(content);
     state.title = title || extractTitleFromContent(content, remoteId);
     state.pageIndex = 0;
     state.dirty = false;
     state.baselineChars = charCount(state.blocks);
     state.sessionGain = 0;
+    state.autoFocusEditor = true;
     rebuildPages();
     el.titleInput.value = state.title;
     render();
@@ -282,157 +391,118 @@ async function loadDraft(remoteId) {
   }
 }
 
-function render() {
-  rebuildPages();
+function handlePageInput(ta) {
+  const text = ta.value;
   const page = state.pages[state.pageIndex];
-  el.pageLabel.textContent = `第 ${state.pageIndex + 1} / ${state.pages.length} 页`;
-  el.pageTitle.textContent = page?.title || '正文';
-  el.blocks.innerHTML = '';
-  const pageBlocks = currentPageBlocks();
-  pageBlocks.forEach((block, localIdx) => {
-    el.blocks.appendChild(renderBlock(block, localIdx));
-  });
-  renderOutline();
-  updateStats();
-  document.body.classList.toggle('focus-mode', state.focusMode);
-}
+  if (!page) return;
 
-function renderBlock(block, localIdx) {
-  const card = document.createElement('div');
-  card.className = 'block-card';
-  card.dataset.localIdx = String(localIdx);
-  card.draggable = true;
-
-  const toolbar = document.createElement('div');
-  toolbar.className = 'block-toolbar';
-  toolbar.innerHTML = `<span class="drag-hint">拖拽排序</span>`;
-  const up = btn('↑', () => moveBlock(localIdx, -1));
-  const down = btn('↓', () => moveBlock(localIdx, 1));
-  const del = btn('删除', () => removeBlock(localIdx));
-  del.classList.add('danger');
-  toolbar.append(up, down, del);
-  card.appendChild(toolbar);
-
-  if (block.type === 'paragraph') {
-    const ta = document.createElement('textarea');
-    ta.className = 'paragraph';
-    ta.value = block.text;
-    ta.placeholder = '在这里写段落…';
-    ta.onfocus = () => { state.focusedLocal = localIdx; };
-    ta.oninput = () => {
-      const gi = globalIndexFromPageLocal(localIdx);
-      state.blocks[gi].text = ta.value;
-      state.dirty = true;
-      state.focusedLocal = localIdx;
+  const { keep, overflow } = splitTextOverflow(text, PAGE_CHAR_BUDGET);
+  if (overflow) {
+    setPagePlainText(state.blocks, page, keep);
+    state.dirty = true;
+    rebuildPages();
+    const nextPage = state.pages[state.pageIndex + 1];
+    if (nextPage) {
+      const nextText = pagePlainText(state.blocks, nextPage);
+      setPagePlainText(state.blocks, nextPage, overflow + (nextText ? `\n\n${nextText}` : ''));
+      state.pageIndex++;
+    } else {
+      state.blocks.push({ type: 'paragraph', text: overflow, id: newId() });
       rebuildPages();
-      updateStats();
-      renderOutline();
-    };
-    card.appendChild(ta);
-  } else {
-    const wrap = document.createElement('div');
-    wrap.className = 'image-block';
-    renderImagePreview(wrap, block);
-    const controls = document.createElement('div');
-    controls.className = 'image-controls';
-    controls.innerHTML = `<span>宽度</span>`;
-    const slider = document.createElement('input');
-    slider.type = 'range';
-    slider.min = '30';
-    slider.max = '100';
-    slider.value = String(Math.round(block.widthPercent * 100));
-    const label = document.createElement('span');
-    label.textContent = `${slider.value}%`;
-    slider.oninput = () => {
-      const gi = globalIndexFromPageLocal(localIdx);
-      state.blocks[gi].widthPercent = parseInt(slider.value, 10) / 100;
-      label.textContent = `${slider.value}%`;
-      renderImagePreview(wrap, state.blocks[gi]);
-      state.dirty = true;
-      updateStats();
-    };
-    controls.append(slider, label);
-    wrap.appendChild(controls);
-    card.appendChild(wrap);
+      state.pageIndex = state.pages.length - 1;
+    }
+    state.autoFocusEditor = true;
+    render();
+    setStatus('本页已满，已自动翻到下一页');
+    return;
   }
 
-  card.addEventListener('dragstart', (e) => {
-    e.dataTransfer.setData('text/plain', String(localIdx));
-    card.classList.add('dragging');
-  });
-  card.addEventListener('dragend', () => card.classList.remove('dragging'));
-  card.addEventListener('dragover', (e) => { e.preventDefault(); });
-  card.addEventListener('drop', (e) => {
-    e.preventDefault();
-    const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
-    const to = localIdx;
-    if (!Number.isNaN(from) && from !== to) reorderWithinPage(from, to);
-  });
-
-  return card;
+  setPagePlainText(state.blocks, page, text);
+  state.dirty = true;
+  const prevLen = state.pages.length;
+  rebuildPages();
+  updateStats();
+  renderOutline();
+  if (state.pages.length !== prevLen) {
+    el.pageLabel.textContent = `第 ${state.pageIndex + 1} / ${state.pages.length} 页`;
+  }
 }
 
-async function renderImagePreview(wrap, block) {
-  wrap.querySelectorAll('img, .missing').forEach(n => n.remove());
+async function renderImageInline(wrap, block) {
   const uri = await window.kanshu.resolveAsset(state.booksDir, block.path);
+  wrap.innerHTML = '';
   if (uri) {
     const img = document.createElement('img');
     img.src = uri;
     img.style.width = `${Math.round(block.widthPercent * 100)}%`;
     img.alt = block.path;
-    wrap.prepend(img);
+    wrap.appendChild(img);
   } else {
     const miss = document.createElement('div');
     miss.className = 'missing';
     miss.textContent = `图片缺失：${block.path}`;
-    wrap.prepend(miss);
+    wrap.appendChild(miss);
   }
 }
 
-function btn(text, onClick) {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'btn ghost';
-  b.textContent = text;
-  b.onclick = onClick;
-  return b;
-}
-
-function moveBlock(localIdx, delta) {
+function render() {
+  rebuildPages();
+  updateEditorChrome();
   const page = state.pages[state.pageIndex];
-  const from = page.startIndex + localIdx;
-  const to = from + delta;
-  if (to < page.startIndex || to >= page.endExclusive) return;
-  const tmp = state.blocks[from];
-  state.blocks[from] = state.blocks[to];
-  state.blocks[to] = tmp;
-  state.dirty = true;
-  render();
-}
+  el.pageLabel.textContent = `第 ${state.pageIndex + 1} / ${state.pages.length} 页`;
+  el.pageTitle.textContent = page?.title || '正文';
+  el.blocks.innerHTML = '';
 
-function reorderWithinPage(fromLocal, toLocal) {
-  const page = state.pages[state.pageIndex];
-  const from = page.startIndex + fromLocal;
-  const to = page.startIndex + toLocal;
-  const [item] = state.blocks.splice(from, 1);
-  state.blocks.splice(to, 0, item);
-  state.dirty = true;
-  render();
-}
-
-function removeBlock(localIdx) {
-  const gi = globalIndexFromPageLocal(localIdx);
-  state.blocks.splice(gi, 1);
-  if (state.blocks.length === 0) state.blocks.push({ type: 'paragraph', text: '', id: newId() });
-  if (state.blocks[state.blocks.length - 1].type !== 'paragraph') {
-    state.blocks.push({ type: 'paragraph', text: '', id: newId() });
+  if (state.viewMode === 'idle') {
+    el.blocks.innerHTML = '<p class="page-hint meta">从左侧书库选择文稿，或新建</p>';
+    renderOutline();
+    updateStats();
+    document.body.classList.toggle('focus-mode', state.focusMode);
+    return;
   }
-  state.dirty = true;
-  render();
+
+  if (state.viewMode === 'read') {
+    const reader = document.createElement('div');
+    reader.className = 'page-reader';
+    reader.textContent = pagePlainText(state.blocks, page);
+    el.blocks.appendChild(reader);
+    renderOutline();
+    updateStats();
+    document.body.classList.toggle('focus-mode', state.focusMode);
+    return;
+  }
+
+  const pageBlocks = currentPageBlocks();
+  for (const block of pageBlocks) {
+    if (block.type === 'image') {
+      const wrap = document.createElement('div');
+      wrap.className = 'image-inline';
+      renderImageInline(wrap, block);
+      el.blocks.appendChild(wrap);
+    }
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'page-editor-wrap';
+  const ta = document.createElement('textarea');
+  ta.className = 'page-editor';
+  ta.value = pagePlainText(state.blocks, page);
+  ta.placeholder = '在这里写作…写满本页会自动翻到下一页';
+  ta.oninput = () => handlePageInput(ta);
+  wrap.appendChild(ta);
+  el.blocks.appendChild(wrap);
+
+  renderOutline();
+  updateStats();
+  document.body.classList.toggle('focus-mode', state.focusMode);
+  if (state.autoFocusEditor) {
+    state.autoFocusEditor = false;
+    ta.focus();
+  }
 }
 
 async function saveDraft(fromAuto = false) {
-  if (!state.remoteId) {
+  if (state.viewMode !== 'write' || !state.remoteId) {
     if (!fromAuto) setStatus('请先新建或打开一篇文稿', true);
     return;
   }
@@ -443,7 +513,8 @@ async function saveDraft(fromAuto = false) {
       remoteId: state.remoteId,
       title: state.title,
       content,
-      exportTxt: true
+      exportTxt: true,
+      folder: state.bookFolder
     });
     await persistDailyProgress();
     state.dirty = false;
@@ -572,17 +643,38 @@ function bindEvents() {
     }
     e.preventDefault();
     const title = el.newDraftTitle?.value || '未命名';
+    const folder = el.newDraftFolder?.value || '仓库书';
     el.newDraftDialog.close();
-    await createNewDraft(title);
+    await createNewDraft(title, folder);
+  });
+
+  el.chapterForm?.addEventListener('submit', (e) => {
+    const submitter = e.submitter;
+    if (submitter && submitter.value === 'cancel') {
+      el.chapterDialog.close();
+      return;
+    }
+    e.preventDefault();
+    const sub = el.chapterSubtitle?.value || '';
+    el.chapterDialog.close();
+    insertNextChapter(sub);
   });
 
   document.getElementById('btn-save').onclick = () => saveDraft(false);
   document.getElementById('btn-upload').onclick = uploadGithub;
   document.getElementById('btn-prev-page').onclick = () => {
-    if (state.pageIndex > 0) { state.pageIndex--; render(); }
+    if (state.pageIndex > 0) {
+      state.pageIndex--;
+      state.autoFocusEditor = state.viewMode === 'write';
+      render();
+    }
   };
   document.getElementById('btn-next-page').onclick = () => {
-    if (state.pageIndex < state.pages.length - 1) { state.pageIndex++; render(); }
+    if (state.pageIndex < state.pages.length - 1) {
+      state.pageIndex++;
+      state.autoFocusEditor = state.viewMode === 'write';
+      render();
+    }
   };
   document.getElementById('btn-focus').onclick = () => {
     state.focusMode = !state.focusMode;
@@ -590,30 +682,19 @@ function bindEvents() {
     render();
   };
 
-  document.getElementById('btn-chapter').onclick = () => {
-    const sub = prompt('章节名（可选）', '') || '';
-    const title = nextChapterTitle(state.blocks, sub);
-    const last = state.blocks[state.blocks.length - 1];
-    if (last.type === 'paragraph') {
-      last.text = last.text.trimEnd() + (last.text.length ? '\n\n' : '') + title;
-    } else {
-      state.blocks.push({ type: 'paragraph', text: title, id: newId() });
-    }
-    state.blocks.push({ type: 'paragraph', text: '', id: newId() });
-    state.dirty = true;
-    state.pageIndex = state.pages.length;
-    render();
-  };
+  document.getElementById('btn-chapter').onclick = () => openChapterDialog();
 
   document.getElementById('btn-image').onclick = async () => {
-    if (!state.remoteId) {
+    if (state.viewMode !== 'write' || !state.remoteId) {
       setStatus('请先打开或新建文稿', true);
       return;
     }
     const picked = await window.kanshu.pickImage(state.remoteId);
     if (!picked) return;
-    state.blocks.push({ type: 'image', path: picked.relativePath, widthPercent: 1, id: newId() });
-    state.blocks.push({ type: 'paragraph', text: '', id: newId() });
+    const page = state.pages[state.pageIndex];
+    const insertAt = page ? page.endExclusive - 1 : state.blocks.length - 1;
+    const idx = Math.max(0, insertAt);
+    state.blocks.splice(idx, 0, { type: 'image', path: picked.relativePath, widthPercent: 1, id: newId() });
     state.dirty = true;
     render();
   };
@@ -702,6 +783,11 @@ function bindEvents() {
     state.title = el.titleInput.value;
     state.dirty = true;
     updateStats();
+  };
+
+  el.titleInput.onchange = () => {
+    state.title = el.titleInput.value.trim() || state.remoteId || '未命名';
+    state.dirty = true;
   };
 
   window.addEventListener('keydown', (e) => {

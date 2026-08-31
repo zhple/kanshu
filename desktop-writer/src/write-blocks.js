@@ -65,10 +65,63 @@ export function contentLooksEmpty(blocks) {
   return !blocks.some(b => (b.type === 'paragraph' && b.text.trim()) || b.type === 'image');
 }
 
+export const PAGE_CHAR_BUDGET = 1600;
+
 const chapterLineRegex = /^第[\d零一二三四五六七八九十百千两]+章|^序章|^终章|^楔子|^尾声|^番外|^Chapter\s+\d+/;
 
+export function pagePlainText(blocks, page) {
+  if (!page) return '';
+  return blocks
+    .slice(page.startIndex, page.endExclusive)
+    .filter((b) => b.type === 'paragraph')
+    .map((b) => b.text)
+    .join('\n\n');
+}
+
+/** 将当前页段落合并为一个块，保留插图块顺序 */
+export function setPagePlainText(blocks, page, text) {
+  const start = page.startIndex;
+  const end = page.endExclusive;
+  const segment = blocks.slice(start, end);
+  const next = [];
+  let textApplied = false;
+  for (const block of segment) {
+    if (block.type === 'image') {
+      next.push(block);
+    } else if (!textApplied) {
+      next.push({ type: 'paragraph', text, id: block.id || newId() });
+      textApplied = true;
+    }
+  }
+  if (!textApplied) {
+    next.unshift({ type: 'paragraph', text, id: newId() });
+  }
+  blocks.splice(start, end - start, ...next);
+}
+
+export function splitTextOverflow(text, budget = PAGE_CHAR_BUDGET) {
+  let count = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (!/\s/.test(text[i])) count++;
+    if (count > budget) {
+      let splitAt = i;
+      const nl = text.lastIndexOf('\n', i);
+      if (nl > i - 160) splitAt = nl + 1;
+      const keep = text.slice(0, splitAt).trimEnd();
+      const overflow = text.slice(splitAt).trimStart();
+      if (!overflow) return { keep: text, overflow: '' };
+      return { keep, overflow };
+    }
+  }
+  return { keep: text, overflow: '' };
+}
+
+export function pageCharWeight(text) {
+  return Math.max([...text].filter((ch) => !/\s/.test(ch)).length, 40);
+}
+
 function blockWeight(block) {
-  if (block.type === 'paragraph') return Math.max(block.text.length, 40);
+  if (block.type === 'paragraph') return pageCharWeight(block.text);
   return 500;
 }
 
@@ -91,7 +144,6 @@ export function buildPages(blocks) {
   let title = '开头';
   let weight = 0;
   let pageOrdinal = 1;
-  const PAGE_CHAR_BUDGET = 1600;
 
   function flush(end) {
     if (end <= start) return;

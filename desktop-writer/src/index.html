@@ -72,9 +72,23 @@
       <h2>新建文稿</h2>
       <label for="new-draft-title">标题</label>
       <input id="new-draft-title" type="text" value="未命名" autocomplete="off" />
+      <label for="new-draft-folder">分类</label>
+      <select id="new-draft-folder"></select>
       <div class="dialog-actions">
         <button value="cancel" class="btn ghost" type="submit">取消</button>
         <button value="ok" class="btn primary" type="submit">创建</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="chapter-dialog">
+    <form method="dialog" id="chapter-form">
+      <h2>插入下一章</h2>
+      <label for="chapter-subtitle">章节名（可选）</label>
+      <input id="chapter-subtitle" type="text" placeholder="例如：雨夜" autocomplete="off" />
+      <div class="dialog-actions">
+        <button value="cancel" class="btn ghost" type="submit">取消</button>
+        <button value="ok" class="btn primary" type="submit">插入</button>
       </div>
     </form>
   </dialog>
