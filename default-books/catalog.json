@@ -1,5 +1,5 @@
 {
-  "version": 10,
+  "version": 11,
   "folders": [
     "仓库书"
   ],
@@ -135,6 +135,17 @@
       "chapterIndex": 0,
       "scrollOffset": 2,
       "lastReadAt": 1787732091666
+    },
+    {
+      "id": "user-a6eb881018",
+      "title": "测试",
+      "author": "我写的",
+      "file": "user-a6eb881018.txt",
+      "format": "TXT",
+      "folder": "仓库书",
+      "chapterIndex": 0,
+      "scrollOffset": 0,
+      "lastReadAt": 1788152901207
     }
   ]
 }
