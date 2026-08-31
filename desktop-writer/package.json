@@ -1,6 +1,6 @@
 {
   "name": "kanshu-writer",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "看书桌面写作端 — 与 Android 共享 .draft.txt 格式",
   "main": "main.js",
   "scripts": {
@@ -27,6 +27,7 @@
       "preload.js",
       "updater.js",
       "library-sync.js",
+      "latest.json",
       "src/**/*"
     ],
     "extraMetadata": {

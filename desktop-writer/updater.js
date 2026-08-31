@@ -7,6 +7,7 @@ const http = require('http');
 const { spawn } = require('child_process');
 
 const RELEASES_API = 'https://api.github.com/repos/zhple/kanshu/releases?per_page=30';
+const LATEST_JSON_URL = 'https://raw.githubusercontent.com/zhple/kanshu/main/desktop-writer/latest.json';
 const TAG_PREFIX = 'writer-v';
 
 function compareSemver(a, b) {
@@ -22,44 +23,58 @@ function compareSemver(a, b) {
   return 0;
 }
 
-function fetchJson(url) {
+function requestText(url, headers = {}, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
-    const req = https.get(
+    const mod = url.startsWith('http://') ? http : https;
+    const req = mod.get(
       url,
-      {
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'User-Agent': 'Kanshu-Writer-Updater',
-          'X-GitHub-Api-Version': '2022-11-28'
-        },
-        timeout: 20000
-      },
+      { headers, timeout: timeoutMs },
       (res) => {
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          requestText(res.headers.location, headers, timeoutMs).then(resolve, reject);
+          return;
+        }
         let body = '';
         res.on('data', (c) => { body += c; });
         res.on('end', () => {
-          if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            fetchJson(res.headers.location).then(resolve, reject);
-            return;
-          }
           if (res.statusCode !== 200) {
-            reject(new Error(`检查更新失败 HTTP ${res.statusCode}`));
+            reject(new Error(`HTTP ${res.statusCode}`));
             return;
           }
-          try {
-            resolve(JSON.parse(body));
-          } catch (e) {
-            reject(e);
-          }
+          resolve(body);
         });
       }
     );
     req.on('error', reject);
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error('检查更新超时'));
+      reject(new Error('请求超时'));
     });
   });
+}
+
+function githubApiHeaders(token) {
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': `Kanshu-Writer-Updater/${app.getVersion()}`,
+    'X-GitHub-Api-Version': '2022-11-28'
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+async function fetchJson(url, token = '') {
+  const body = await requestText(url, githubApiHeaders(token));
+  return JSON.parse(body);
+}
+
+async function fetchLatestManifest() {
+  const body = await requestText(LATEST_JSON_URL, {
+    Accept: 'application/json',
+    'User-Agent': `Kanshu-Writer-Updater/${app.getVersion()}`
+  });
+  return JSON.parse(body);
 }
 
 function pickDesktopAsset(assets = []) {
@@ -85,12 +100,23 @@ function parseWriterVersion(tagName = '') {
   return null;
 }
 
-/**
- * 在 releases 列表中找最新的桌面端 writer-v* 版本。
- * 与手机端 v{versionCode} 分开，避免互相抢 latest。
- */
-async function checkForUpdate(currentVersion = app.getVersion()) {
-  const releases = await fetchJson(RELEASES_API);
+function buildUpdateInfo(currentVersion, latestVersion, asset, extra = {}) {
+  return {
+    updateAvailable: true,
+    currentVersion,
+    latestVersion,
+    releaseNotes: extra.releaseNotes || '',
+    htmlUrl: extra.htmlUrl || '',
+    downloadUrl: asset.url,
+    fileName: asset.name,
+    kind: asset.kind,
+    size: asset.size || 0,
+    source: extra.source || 'api'
+  };
+}
+
+async function checkViaGithubApi(currentVersion, token) {
+  const releases = await fetchJson(RELEASES_API, token);
   if (!Array.isArray(releases)) throw new Error('更新接口返回异常');
 
   for (const rel of releases) {
@@ -98,23 +124,62 @@ async function checkForUpdate(currentVersion = app.getVersion()) {
     const version = parseWriterVersion(rel.tag_name || '');
     if (!version) continue;
     if (compareSemver(version, currentVersion) <= 0) {
-      return { updateAvailable: false, currentVersion, latestVersion: version };
+      return { updateAvailable: false, currentVersion, latestVersion: version, source: 'api' };
     }
     const asset = pickDesktopAsset(rel.assets || []);
     if (!asset?.url) continue;
-    return {
-      updateAvailable: true,
-      currentVersion,
-      latestVersion: version,
+    return buildUpdateInfo(currentVersion, version, asset, {
       releaseNotes: rel.body || '',
       htmlUrl: rel.html_url || '',
-      downloadUrl: asset.url,
-      fileName: asset.name,
-      kind: asset.kind,
-      size: asset.size
-    };
+      source: 'api'
+    });
   }
-  return { updateAvailable: false, currentVersion, latestVersion: currentVersion };
+  return { updateAvailable: false, currentVersion, latestVersion: currentVersion, source: 'api' };
+}
+
+async function checkViaLatestJson(currentVersion) {
+  const manifest = await fetchLatestManifest();
+  const version = String(manifest.version || '').trim();
+  if (!version) throw new Error('latest.json 缺少 version');
+
+  if (compareSemver(version, currentVersion) <= 0) {
+    return { updateAvailable: false, currentVersion, latestVersion: version, source: 'manifest' };
+  }
+
+  const setup = manifest.setup || {};
+  const portable = manifest.portable || {};
+  const asset = setup.url
+    ? { name: setup.name || `kanshu-writer-setup-${version}.exe`, url: setup.url, kind: 'setup', size: 0 }
+    : portable.url
+      ? { name: portable.name || `kanshu-writer-${version}-portable.exe`, url: portable.url, kind: 'portable', size: 0 }
+      : null;
+  if (!asset?.url) throw new Error('latest.json 缺少下载地址');
+
+  return buildUpdateInfo(currentVersion, version, asset, {
+    releaseNotes: manifest.releaseNotes || '',
+    htmlUrl: manifest.htmlUrl || '',
+    source: 'manifest'
+  });
+}
+
+/**
+ * 在 releases / latest.json 中找最新的桌面端 writer 版本。
+ * API 403 或限流时自动回退 raw latest.json。
+ */
+async function checkForUpdate(currentVersion = app.getVersion(), token = '') {
+  try {
+    return await checkViaGithubApi(currentVersion, token);
+  } catch (apiErr) {
+    try {
+      return await checkViaLatestJson(currentVersion);
+    } catch (manifestErr) {
+      const detail = apiErr.message || '未知错误';
+      if (/403/.test(detail)) {
+        throw new Error('检查更新失败：无法访问 GitHub（403）。请检查网络或到发布页手动下载。');
+      }
+      throw new Error(`检查更新失败：${detail}`);
+    }
+  }
 }
 
 function downloadFile(url, destPath, onProgress) {
@@ -128,7 +193,7 @@ function downloadFile(url, destPath, onProgress) {
       const req = mod.get(
         target,
         {
-          headers: { 'User-Agent': 'Kanshu-Writer-Updater' },
+          headers: { 'User-Agent': `Kanshu-Writer-Updater/${app.getVersion()}` },
           timeout: 120000
         },
         (res) => {
@@ -177,9 +242,6 @@ async function downloadUpdate(info, onProgress) {
   return dest;
 }
 
-/**
- * 启动安装包并退出当前应用，便于覆盖安装。
- */
 function launchInstallerAndQuit(filePath) {
   const child = spawn(filePath, [], {
     detached: true,
@@ -190,17 +252,23 @@ function launchInstallerAndQuit(filePath) {
   setTimeout(() => app.quit(), 400);
 }
 
-async function promptAndUpdate(parentWindow, { silentIfCurrent = true } = {}) {
+async function promptAndUpdate(parentWindow, { silentIfCurrent = true, token = '' } = {}) {
   let info;
   try {
-    info = await checkForUpdate();
+    info = await checkForUpdate(app.getVersion(), token);
   } catch (e) {
     if (!silentIfCurrent) {
-      await dialog.showMessageBox(parentWindow, {
+      const { response } = await dialog.showMessageBox(parentWindow, {
         type: 'error',
         title: '检查更新',
-        message: e.message || '检查更新失败'
+        message: e.message || '检查更新失败',
+        buttons: ['确定', '打开发布页'],
+        defaultId: 0,
+        cancelId: 0
       });
+      if (response === 1) {
+        await shell.openExternal('https://github.com/zhple/kanshu/releases?q=writer-v');
+      }
     }
     return { ok: false, error: e.message };
   }

@@ -126,7 +126,8 @@ app.whenReady().then(async () => {
       const cfg = await readConfig();
       if (cfg.autoCheckUpdate === false) return;
       if (!mainWindow || mainWindow.isDestroyed()) return;
-      await promptAndUpdate(mainWindow, { silentIfCurrent: true });
+      const token = cfg.githubToken?.trim() || '';
+      await promptAndUpdate(mainWindow, { silentIfCurrent: true, token });
     } catch {
       /* ignore startup update errors */
     }
@@ -145,10 +146,12 @@ ipcMain.handle('get-app-info', () => ({
 }));
 
 ipcMain.handle('check-update', async (_e, opts = {}) => {
+  const cfg = await readConfig();
+  const token = cfg.githubToken?.trim() || '';
   if (opts?.prompt) {
-    return promptAndUpdate(mainWindow, { silentIfCurrent: false });
+    return promptAndUpdate(mainWindow, { silentIfCurrent: false, token });
   }
-  return checkForUpdate();
+  return checkForUpdate(app.getVersion(), token);
 });
 
 ipcMain.handle('sync-library', async (_e, opts = {}) => {

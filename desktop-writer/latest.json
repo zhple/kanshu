@@ -1,0 +1,14 @@
+{
+  "version": "1.2.3",
+  "tag": "writer-v1.2.3",
+  "htmlUrl": "https://github.com/zhple/kanshu/releases/tag/writer-v1.2.3",
+  "releaseNotes": "修复检查更新 HTTP 403：API 失败时回退 latest.json；支持使用已配置的 GitHub Token。",
+  "setup": {
+    "name": "kanshu-writer-setup-1.2.3.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.3/kanshu-writer-setup-1.2.3.exe"
+  },
+  "portable": {
+    "name": "kanshu-writer-1.2.3-portable.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.3/kanshu-writer-1.2.3-portable.exe"
+  }
+}
