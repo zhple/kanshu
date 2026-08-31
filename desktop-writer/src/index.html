@@ -11,26 +11,17 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-head">
         <h1>看书写作</h1>
-        <p class="hint">与手机端共享 .draft.txt · 专注写作</p>
+        <p class="hint">与手机端共享书库 · 专注读写</p>
         <p id="app-version" class="version-label">v—</p>
       </div>
-      <div class="sidebar-actions">
-        <button id="btn-workspace" class="btn secondary">打开目录</button>
-        <button id="btn-sync-library" class="btn primary">同步书库</button>
-        <button id="btn-new" class="btn secondary">新建文稿</button>
-      </div>
-      <p id="workspace-label" class="workspace-label">未选择工作目录</p>
-      <div class="side-section side-section-grow">
-        <div class="side-section-title">共享书库 <span id="library-version" class="meta"></span></div>
-        <ul id="library-list" class="draft-list">
-          <li class="meta" style="padding:12px">点「同步书库」拉取朋友上传的书</li>
-        </ul>
-      </div>
-      <div class="side-section">
-        <div class="side-section-title">章节大纲</div>
-        <ul id="outline-list" class="outline-list">
-          <li class="meta">插入「下一章」后显示</li>
-        </ul>
+      <button id="btn-back" class="btn ghost sidebar-back hidden" type="button">← 返回</button>
+      <div id="sidebar-editor-tools" class="sidebar-editor-tools hidden">
+        <div class="side-section side-section-grow">
+          <div class="side-section-title">章节大纲</div>
+          <ul id="outline-list" class="outline-list">
+            <li class="meta">插入「下一章」后显示</li>
+          </ul>
+        </div>
       </div>
       <div class="sidebar-foot">
         <button id="btn-check-update" class="btn secondary" type="button">检查更新</button>
@@ -38,30 +29,37 @@
       </div>
     </aside>
 
-    <main class="editor-pane">
-      <header class="toolbar">
-        <input id="title-input" type="text" placeholder="文稿标题" />
-        <div class="toolbar-actions">
-          <button id="btn-prev-page" class="btn ghost" title="上一页">←</button>
-          <span id="page-label">第 1 / 1 页</span>
-          <button id="btn-next-page" class="btn ghost" title="下一页">→</button>
-          <span class="sep"></span>
-          <button id="btn-chapter" class="btn secondary">下一章</button>
-          <button id="btn-image" class="btn secondary">插图</button>
-          <button id="btn-focus" class="btn ghost">专注</button>
-          <button id="btn-save" class="btn primary">保存</button>
-          <button id="btn-upload" class="btn secondary">上传 GitHub</button>
+    <main class="main-pane">
+      <section id="hub-panel" class="hub-panel">
+        <div id="hub-content" class="hub-content"></div>
+        <p id="hub-status" class="status hub-status"></p>
+      </section>
+
+      <section id="editor-panel" class="editor-panel hidden">
+        <header class="toolbar">
+          <input id="title-input" type="text" placeholder="文稿标题" />
+          <div class="toolbar-actions">
+            <button id="btn-prev-page" class="btn ghost" title="上一页">←</button>
+            <span id="page-label">第 1 / 1 页</span>
+            <button id="btn-next-page" class="btn ghost" title="下一页">→</button>
+            <span class="sep"></span>
+            <button id="btn-chapter" class="btn secondary">下一章</button>
+            <button id="btn-image" class="btn secondary">插图</button>
+            <button id="btn-focus" class="btn ghost">专注</button>
+            <button id="btn-save" class="btn primary">保存</button>
+            <button id="btn-upload" class="btn secondary">上传 GitHub</button>
+          </div>
+        </header>
+        <div class="stats-bar">
+          <span id="stats-text">0 字 · 今日 0 / 1000</span>
+          <div class="goal-track"><div id="goal-fill" class="goal-fill"></div></div>
+          <span id="dirty-badge" class="dirty-badge hidden">未保存</span>
         </div>
-      </header>
-      <div class="stats-bar">
-        <span id="stats-text">0 字 · 今日 0 / 1000</span>
-        <div class="goal-track"><div id="goal-fill" class="goal-fill"></div></div>
-        <span id="dirty-badge" class="dirty-badge hidden">未保存</span>
-      </div>
-      <p id="page-title" class="page-title">正文</p>
-      <p id="page-subtitle" class="page-subtitle">第 1 / 1 页</p>
-      <div id="blocks" class="blocks"></div>
-      <p id="status" class="status"></p>
+        <p id="page-title" class="page-title">正文</p>
+        <p id="page-subtitle" class="page-subtitle">第 1 / 1 页</p>
+        <div id="blocks" class="blocks"></div>
+        <p id="status" class="status"></p>
+      </section>
     </main>
   </div>
 
@@ -105,6 +103,7 @@
       <input id="cfg-branch" type="text" value="main" />
       <label>每日写作目标（字）</label>
       <input id="cfg-goal" type="number" min="100" max="50000" value="1000" />
+      <p class="hint" style="margin:12px 0 8px">工作目录请在首页选择；共享书库位于工作目录下的 default-books。</p>
       <label class="check-row">
         <input id="cfg-auto-update" type="checkbox" checked />
         启动时自动检查更新
