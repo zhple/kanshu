@@ -29,10 +29,8 @@ export function parse(content) {
   let match;
   while ((match = re.exec(normalized)) !== null) {
     if (match.index > last) {
-      const text = normalized.slice(last, match.index).replace(/^\n+|\n+$/g, '');
-      if (text.length > 0 || result.length === 0) {
-        result.push({ type: 'paragraph', text, id: newId() });
-      }
+      const text = normalized.slice(last, match.index);
+      pushParagraphChunks(result, text);
     }
     const path = match[1].trim();
     const width = match[2] ? Math.min(1, Math.max(0.3, parseFloat(match[2]))) : 1;
@@ -40,7 +38,7 @@ export function parse(content) {
     last = match.index + match[0].length;
   }
   if (last < normalized.length) {
-    result.push({ type: 'paragraph', text: normalized.slice(last).replace(/^\n+/, ''), id: newId() });
+    pushParagraphChunks(result, normalized.slice(last));
   }
   if (result.length === 0) result.push({ type: 'paragraph', text: '', id: newId() });
   if (result[result.length - 1].type !== 'paragraph') {
@@ -68,6 +66,59 @@ export function contentLooksEmpty(blocks) {
 export const PAGE_CHAR_BUDGET = 1600;
 
 const chapterLineRegex = /^第[\d零一二三四五六七八九十百千两]+章|^序章|^终章|^楔子|^尾声|^番外|^Chapter\s+\d+/;
+
+function isChapterHeadingLine(line) {
+  const t = String(line || '').trim();
+  return t.length > 0 && t.length <= 48 && chapterLineRegex.test(t);
+}
+
+/** 与 serialize 的 \\n\\n 对齐：把文本段拆成多个段落块 */
+function pushParagraphChunks(result, text) {
+  const trimmed = String(text || '').replace(/^\n+|\n+$/g, '');
+  if (!trimmed && result.length > 0) return;
+  const chunks = trimmed ? trimmed.split(/\n\n+/) : [''];
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i].trim();
+    if (chunk.length > 0 || (result.length === 0 && i === 0)) {
+      result.push({ type: 'paragraph', text: chunk, id: newId() });
+    }
+  }
+  if (result.length === 0) result.push({ type: 'paragraph', text: '', id: newId() });
+}
+
+/** 修复旧稿：段落中间出现的「第N章」行拆成独立块 */
+export function expandBlocksByChapterHeadings(blocks) {
+  const out = [];
+  for (const block of blocks) {
+    if (block.type !== 'paragraph') {
+      out.push(block);
+      continue;
+    }
+    const lines = block.text.split('\n');
+    let buf = [];
+    let pushed = false;
+    const flushBuf = () => {
+      const body = buf.join('\n').trim();
+      buf = [];
+      if (body) {
+        out.push({ type: 'paragraph', text: body, id: newId() });
+        pushed = true;
+      }
+    };
+    for (const line of lines) {
+      if (isChapterHeadingLine(line.trim())) {
+        flushBuf();
+        out.push({ type: 'paragraph', text: line.trim(), id: newId() });
+        pushed = true;
+      } else {
+        buf.push(line);
+      }
+    }
+    flushBuf();
+    if (!pushed) out.push(block);
+  }
+  return out.length ? out : blocks;
+}
 
 export function pagePlainText(blocks, page) {
   if (!page) return '';
@@ -192,6 +243,7 @@ export function bodyToPages(text, budget = PAGE_CHAR_BUDGET) {
 
 /** 从 draft 块解析为「章节 + 页」结构，便于桌面端换页写作 */
 export function blocksToChapters(blocks) {
+  blocks = expandBlocksByChapterHeadings(blocks);
   if (!blocks.length) return [{ title: '第1章', pages: [''], images: [] }];
 
   const chapters = [];

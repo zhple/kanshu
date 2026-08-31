@@ -64,6 +64,59 @@ object WriteBlocks {
 
     fun newId(): String = UUID.randomUUID().toString()
 
+    private fun isChapterHeadingLine(line: String): Boolean {
+        val t = line.trim()
+        return t.isNotEmpty() && t.length <= 48 && chapterLineRegex.containsMatchIn(t)
+    }
+
+    private fun pushParagraphChunks(result: MutableList<WriteBlock>, text: String) {
+        val trimmed = text.trim('\n')
+        if (trimmed.isEmpty() && result.isNotEmpty()) return
+        val chunks = if (trimmed.isEmpty()) listOf("") else trimmed.split(Regex("\n\n+"))
+        for (chunk in chunks) {
+            val c = chunk.trim()
+            if (c.isNotEmpty() || result.isEmpty()) {
+                result += WriteBlock.Paragraph(c)
+            }
+        }
+        if (result.isEmpty()) result += WriteBlock.Paragraph("")
+    }
+
+    /** 修复旧稿：段落中间出现的章节标题行拆成独立块 */
+    fun expandBlocksByChapterHeadings(blocks: List<WriteBlock>): List<WriteBlock> {
+        val out = mutableListOf<WriteBlock>()
+        for (block in blocks) {
+            if (block !is WriteBlock.Paragraph) {
+                out += block
+                continue
+            }
+            val lines = block.text.split('\n')
+            val buf = StringBuilder()
+            var pushed = false
+            fun flushBuf() {
+                val body = buf.toString().trim()
+                buf.clear()
+                if (body.isNotEmpty()) {
+                    out += WriteBlock.Paragraph(body)
+                    pushed = true
+                }
+            }
+            for (line in lines) {
+                if (isChapterHeadingLine(line)) {
+                    flushBuf()
+                    out += WriteBlock.Paragraph(line.trim())
+                    pushed = true
+                } else {
+                    if (buf.isNotEmpty()) buf.append('\n')
+                    buf.append(line)
+                }
+            }
+            flushBuf()
+            if (!pushed) out += block
+        }
+        return if (out.isNotEmpty()) out else blocks
+    }
+
     fun parse(content: String): List<WriteBlock> {
         val normalized = content.replace("\r\n", "\n").replace('\r', '\n')
         if (normalized.isBlank()) return listOf(WriteBlock.Paragraph(""))
@@ -71,10 +124,7 @@ object WriteBlocks {
         var last = 0
         for (match in WriteMarkers.imageRegex.findAll(normalized)) {
             if (match.range.first > last) {
-                val text = normalized.substring(last, match.range.first).trim('\n')
-                if (text.isNotEmpty() || result.isEmpty()) {
-                    result += WriteBlock.Paragraph(text)
-                }
+                pushParagraphChunks(result, normalized.substring(last, match.range.first))
             }
             val path = match.groupValues[1].trim()
             val width = match.groupValues.getOrNull(2)
@@ -87,14 +137,13 @@ object WriteBlocks {
             last = match.range.last + 1
         }
         if (last < normalized.length) {
-            val text = normalized.substring(last).trimStart('\n')
-            result += WriteBlock.Paragraph(text)
+            pushParagraphChunks(result, normalized.substring(last))
         }
         if (result.isEmpty()) result += WriteBlock.Paragraph("")
         if (result.last() !is WriteBlock.Paragraph) {
             result += WriteBlock.Paragraph("")
         }
-        return result
+        return expandBlocksByChapterHeadings(result)
     }
 
     fun serialize(blocks: List<WriteBlock>): String {

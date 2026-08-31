@@ -1,14 +1,14 @@
 {
-  "version": "1.2.8",
-  "tag": "writer-v1.2.8",
-  "htmlUrl": "https://github.com/zhple/kanshu/releases/tag/writer-v1.2.8",
-  "releaseNotes": "自动更新下载时显示应用内进度条（百分比与已下载大小）。",
+  "version": "1.2.9",
+  "tag": "writer-v1.2.9",
+  "htmlUrl": "https://github.com/zhple/kanshu/releases/tag/writer-v1.2.9",
+  "releaseNotes": "修复打开文稿后第二章被合并进第一章正文、大纲丢失的问题。",
   "setup": {
-    "name": "kanshu-writer-setup-1.2.8.exe",
-    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.8/kanshu-writer-setup-1.2.8.exe"
+    "name": "kanshu-writer-setup-1.2.9.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.9/kanshu-writer-setup-1.2.9.exe"
   },
   "portable": {
-    "name": "kanshu-writer-1.2.8-portable.exe",
-    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.8/kanshu-writer-1.2.8-portable.exe"
+    "name": "kanshu-writer-1.2.9-portable.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.9/kanshu-writer-1.2.9-portable.exe"
   }
 }

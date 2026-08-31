@@ -3,7 +3,7 @@ import {
   charCount, extractTitleFromContent,
   splitTextOverflow, PAGE_CHAR_BUDGET,
   blocksToChapters, chaptersToBlocks, chapterOutline, chapterCharCount,
-  nextChapterTitle
+  nextChapterTitle, expandBlocksByChapterHeadings
 } from './write-blocks.js';
 
 const state = {
@@ -307,7 +307,7 @@ async function openReader(remoteId) {
     state.booksDir = booksDir;
     state.title = title;
     state.bookFolder = folder || '仓库书';
-    state.chapters = blocksToChapters(parse(content));
+    state.chapters = blocksToChapters(expandBlocksByChapterHeadings(parse(content)));
     state.chapterIndex = 0;
     state.pageIndex = 0;
     state.dirty = false;
@@ -473,8 +473,11 @@ async function loadDraft(remoteId) {
     state.remoteId = remoteId;
     state.booksDir = booksDir;
     state.bookFolder = folder || '仓库书';
-    state.chapters = blocksToChapters(parse(content));
+    const blocks = parse(content);
+    const repairedBlocks = expandBlocksByChapterHeadings(blocks);
+    state.chapters = blocksToChapters(repairedBlocks);
     state.title = title || extractTitleFromContent(content, remoteId);
+    const chapterRepaired = repairedBlocks.length > blocks.length;
     state.chapterIndex = 0;
     state.pageIndex = 0;
     state.dirty = false;
@@ -485,7 +488,13 @@ async function loadDraft(remoteId) {
     el.titleInput.value = state.title;
     render();
     await refreshLibraryList();
-    setStatus('已打开文稿');
+    if (chapterRepaired) {
+      state.dirty = true;
+      await saveDraft(true);
+      setStatus('已打开文稿，并自动修复章节结构');
+    } else {
+      setStatus('已打开文稿');
+    }
   } catch (e) {
     setStatus(e.message || '打开失败', true);
   }
