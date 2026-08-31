@@ -12,6 +12,7 @@
       <div class="sidebar-head">
         <h1>看书写作</h1>
         <p class="hint">与手机端共享 .draft.txt · 专注写作</p>
+        <p id="app-version" class="version-label">v—</p>
       </div>
       <div class="sidebar-actions">
         <button id="btn-workspace" class="btn secondary">打开目录</button>
@@ -29,7 +30,8 @@
         </ul>
       </div>
       <div class="sidebar-foot">
-        <button id="btn-settings" class="btn ghost">设置</button>
+        <button id="btn-check-update" class="btn secondary" type="button">检查更新</button>
+        <button id="btn-settings" class="btn ghost" type="button">设置</button>
       </div>
     </aside>
 
@@ -77,6 +79,10 @@
       <input id="cfg-deepseek" type="password" placeholder="sk-..." autocomplete="off" />
       <label>每日写作目标（字）</label>
       <input id="cfg-goal" type="number" min="100" max="50000" value="1000" />
+      <label class="check-row">
+        <input id="cfg-auto-update" type="checkbox" checked />
+        启动时自动检查更新
+      </label>
       <div class="dialog-actions">
         <button value="cancel" class="btn ghost">取消</button>
         <button value="ok" class="btn primary">保存</button>

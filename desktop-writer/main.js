@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
 const { randomUUID } = require('crypto');
+const { promptAndUpdate, checkForUpdate } = require('./updater');
 
 let mainWindow;
 const configPath = () => path.join(app.getPath('userData'), 'config.json');
@@ -12,7 +13,18 @@ async function readConfig() {
     const raw = await fsp.readFile(configPath(), 'utf8');
     return JSON.parse(raw);
   } catch {
-    return { workspace: '', githubToken: '', githubOwner: 'zhple', githubRepo: 'kanshu', githubBranch: 'main', deepseekApiKey: '', dailyGoal: 1000, dailyDone: 0, dailyDate: '' };
+    return {
+      workspace: '',
+      githubToken: '',
+      githubOwner: 'zhple',
+      githubRepo: 'kanshu',
+      githubBranch: 'main',
+      deepseekApiKey: '',
+      dailyGoal: 1000,
+      dailyDone: 0,
+      dailyDate: '',
+      autoCheckUpdate: true
+    };
   }
 }
 
@@ -31,31 +43,111 @@ function assetsDir(booksDir) {
   return path.join(booksDir, 'write_assets');
 }
 
+function buildAppMenu() {
+  const template = [
+    {
+      label: '文件',
+      submenu: [
+        {
+          label: '检查更新',
+          click: () => {
+            if (mainWindow) promptAndUpdate(mainWindow, { silentIfCurrent: false });
+          }
+        },
+        { type: 'separator' },
+        { role: 'quit', label: '退出' }
+      ]
+    },
+    {
+      label: '编辑',
+      submenu: [
+        { role: 'undo', label: '撤销' },
+        { role: 'redo', label: '重做' },
+        { type: 'separator' },
+        { role: 'cut', label: '剪切' },
+        { role: 'copy', label: '复制' },
+        { role: 'paste', label: '粘贴' },
+        { role: 'selectAll', label: '全选' }
+      ]
+    },
+    {
+      label: '帮助',
+      submenu: [
+        {
+          label: '关于看书写作',
+          click: () => {
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: '关于',
+              message: `看书写作 ${app.getVersion()}`,
+              detail: '与手机端共享 .draft.txt 格式的桌面写作工具。\n更新通道：GitHub Release tag writer-v*'
+            });
+          }
+        },
+        {
+          label: '打开发布页',
+          click: () => shell.openExternal('https://github.com/zhple/kanshu/releases')
+        }
+      ]
+    }
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1180,
     height: 820,
     minWidth: 900,
     minHeight: 640,
-    title: '看书 · 写作',
+    title: `看书 · 写作 ${app.getVersion()}`,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
   });
+  mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  buildAppMenu();
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+
+  // 启动后静默检查更新（安装版 / 便携版均可用）
+  setTimeout(async () => {
+    try {
+      const cfg = await readConfig();
+      if (cfg.autoCheckUpdate === false) return;
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      await promptAndUpdate(mainWindow, { silentIfCurrent: true });
+    } catch {
+      /* ignore startup update errors */
+    }
+  }, 4000);
 });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+ipcMain.handle('get-app-info', () => ({
+  version: app.getVersion(),
+  name: app.getName(),
+  isPackaged: app.isPackaged,
+  userData: app.getPath('userData')
+}));
+
+ipcMain.handle('check-update', async (_e, opts = {}) => {
+  if (opts?.prompt) {
+    return promptAndUpdate(mainWindow, { silentIfCurrent: false });
+  }
+  return checkForUpdate();
 });
 
 ipcMain.handle('get-config', readConfig);

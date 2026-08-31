@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('kanshu', {
+  getAppInfo: () => ipcRenderer.invoke('get-app-info'),
+  checkUpdate: (opts) => ipcRenderer.invoke('check-update', opts || {}),
   getConfig: () => ipcRenderer.invoke('get-config'),
   saveConfig: (cfg) => ipcRenderer.invoke('save-config', cfg),
   pickWorkspace: () => ipcRenderer.invoke('pick-workspace'),

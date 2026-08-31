@@ -11,3 +11,6 @@
 .kotlin/
 *.apk
 !release/*.apk
+.gradle-local/
+desktop-writer/node_modules/
+desktop-writer/dist/

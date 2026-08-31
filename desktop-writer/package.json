@@ -1,11 +1,13 @@
 {
   "name": "kanshu-writer",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "看书桌面写作端 — 与 Android 共享 .draft.txt 格式",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "pack": "electron-builder --win portable"
+    "pack": "electron-builder --win portable",
+    "dist": "electron-builder --win",
+    "dist:dir": "electron-builder --win --dir"
   },
   "author": "kanshu",
   "license": "MIT",
@@ -16,11 +18,57 @@
   "build": {
     "appId": "com.kanshu.writer",
     "productName": "看书写作",
-    "directories": { "output": "dist" },
-    "files": ["main.js", "preload.js", "src/**/*"],
+    "copyright": "Copyright © kanshu",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "updater.js",
+      "src/**/*"
+    ],
+    "extraMetadata": {
+      "main": "main.js"
+    },
     "win": {
-      "target": ["portable"],
-      "artifactName": "kanshu-writer-${version}.exe"
-    }
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "kanshu-writer-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "看书写作",
+      "installerLanguages": ["zh_CN", "en_US"],
+      "language": "2052",
+      "artifactName": "kanshu-writer-setup-${version}.exe",
+      "deleteAppDataOnUninstall": false,
+      "uninstallDisplayName": "看书写作"
+    },
+    "portable": {
+      "artifactName": "kanshu-writer-${version}-portable.exe"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "zhple",
+        "repo": "kanshu",
+        "releaseType": "release"
+      }
+    ]
   }
 }

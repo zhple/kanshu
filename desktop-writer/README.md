@@ -1,25 +1,29 @@
 # 看书 · 桌面写作端
 
-与 Android 手机端**共用同一套写作格式**（`.draft.txt` + `[[IMG:write_assets/...]]`），灵感来自 FocusWriter / novelWriter：专注模式、字数目标、章节大纲、AI 续写润色。
+与 Android 手机端**共用同一套写作格式**（`.draft.txt` + `[[IMG:write_assets/...]]`）。
+
+## 下载安装
+
+到 [Releases](https://github.com/zhple/kanshu/releases) 找 tag 以 `writer-v` 开头的版本：
+
+| 文件 | 说明 |
+| --- | --- |
+| `kanshu-writer-setup-x.y.z.exe` | **推荐**：NSIS 安装包，可选目录，开始菜单/桌面快捷方式 |
+| `kanshu-writer-x.y.z-portable.exe` | 便携版，免安装直接运行 |
+
+应用启动约 4 秒后会**自动检查更新**（可在设置关闭）。也可点侧栏「检查更新」，或菜单 **文件 → 检查更新**。
+
+桌面更新通道与手机 APK 分开：只认 `writer-v*` Release，避免被手机版抢 `latest`。
 
 ## 功能
 
-- 打开 kanshu 仓库根目录（或 `default-books/` 文件夹）
-- 编辑 `.draft.txt` 文稿（段落块 + 插图，分页浏览）
-- **章节大纲**侧栏跳转；**下一章**可填副标题
-- **字数统计 + 每日目标**进度条；约 18 秒**自动保存**
-- **专注模式**（工具栏「专注」或 `Ctrl+\`）隐藏侧栏与次要按钮
-- **AI 续写 / 润色 / 扩写**（DeepSeek，先预览再写入）
-- 自动导出同名 `.txt`（UTF-8 BOM，图片替换为【图片：xxx】）
-- 插图保存到 `write_assets/`
-- 可选：上传到 GitHub `default-books/`（含 catalog、draft、txt、插图）
+- 编辑 `.draft.txt`（段落块 + 插图，分页）
+- 章节大纲、专注模式、字数 / 每日目标、自动保存
+- AI 续写 / 润色 / 扩写（DeepSeek）
+- 上传 GitHub `default-books/`（含插图）
+- 自动更新（下载安装包并打开安装程序）
 
-## 环境
-
-- Node.js 18+
-- Windows / macOS / Linux
-
-## 启动
+## 开发启动
 
 ```bash
 cd desktop-writer
@@ -27,32 +31,20 @@ npm install
 npm start
 ```
 
-## 使用步骤
-
-1. 首次启动点 **打开目录**，选择本仓库根目录 `kanshu`（或其中的 `default-books`）
-2. 左侧列表选已有 `.draft.txt`，或 **新建文稿**
-3. 写作、插图、**下一章**（与手机端规则一致）
-4. **Ctrl+S** 或点 **保存**（也会自动保存）
-5. 设置里填 GitHub Token（`repo` 权限）与 DeepSeek Key 后，可 **上传 GitHub** / 使用 AI 助手；手机端同步仓库书即可看到
-
-## 与手机端格式对齐
-
-| 项目 | 格式 |
-| --- | --- |
-| 草稿 | `{id}.draft.txt` |
-| 导出 | `{id}.txt` |
-| 图片 | `write_assets/img_{uuid}.jpg` |
-| 图片标记 | `[[IMG:write_assets/xxx.jpg\|w=0.75]]` |
-
-## 打包 Windows 便携版
+## 打包
 
 ```bash
-npm run pack
+npm run dist
 ```
 
-输出在 `desktop-writer/dist/`。
+产物在 `desktop-writer/dist/`：
+
+- `kanshu-writer-setup-1.2.0.exe`
+- `kanshu-writer-1.2.0-portable.exe`
+
+发布时请打 tag：`writer-v1.2.0`，并把上述两个 exe 挂到该 Release。
 
 ## 注意
 
-- Token / DeepSeek Key 只存在本机 `%APPDATA%/kanshu-writer/config.json`，勿提交到 git
-- 上传时会同步 `default-books/write_assets/` 下的插图
+- Token / DeepSeek Key 存在 `%APPDATA%/kanshu-writer/config.json`
+- 勿提交 `node_modules/`、`dist/`

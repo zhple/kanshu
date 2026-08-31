@@ -47,7 +47,9 @@ const el = {
   cfgRepo: document.getElementById('cfg-repo'),
   cfgBranch: document.getElementById('cfg-branch'),
   cfgDeepseek: document.getElementById('cfg-deepseek'),
-  cfgGoal: document.getElementById('cfg-goal')
+  cfgGoal: document.getElementById('cfg-goal'),
+  cfgAutoUpdate: document.getElementById('cfg-auto-update'),
+  appVersion: document.getElementById('app-version')
 };
 
 function todayKey() {
@@ -87,6 +89,12 @@ function focusedGlobalIndex() {
 
 async function init() {
   state.config = await window.kanshu.getConfig();
+  try {
+    const info = await window.kanshu.getAppInfo();
+    if (el.appVersion) el.appVersion.textContent = `v${info.version}`;
+  } catch {
+    if (el.appVersion) el.appVersion.textContent = '';
+  }
   loadDailyProgress();
   updateWorkspaceLabel();
   await refreshDraftList();
@@ -560,6 +568,26 @@ function bindEvents() {
     await runAiAssist(hint);
   };
 
+  document.getElementById('btn-check-update').onclick = async () => {
+    setStatus('正在检查更新…');
+    try {
+      const result = await window.kanshu.checkUpdate({ prompt: true });
+      if (result?.updateAvailable === false) {
+        setStatus(`已是最新版 v${result.info?.currentVersion || ''}`);
+      } else if (result?.installing) {
+        setStatus('正在打开安装程序…');
+      } else if (result?.deferred) {
+        setStatus('已跳过本次更新');
+      } else if (result?.error) {
+        setStatus(result.error, true);
+      } else {
+        setStatus('更新检查完成');
+      }
+    } catch (e) {
+      setStatus(e.message || '检查更新失败', true);
+    }
+  };
+
   document.getElementById('btn-settings').onclick = () => {
     el.cfgToken.value = state.config?.githubToken || '';
     el.cfgOwner.value = state.config?.githubOwner || 'zhple';
@@ -567,6 +595,9 @@ function bindEvents() {
     el.cfgBranch.value = state.config?.githubBranch || 'main';
     el.cfgDeepseek.value = state.config?.deepseekApiKey || '';
     el.cfgGoal.value = String(state.config?.dailyGoal || 1000);
+    if (el.cfgAutoUpdate) {
+      el.cfgAutoUpdate.checked = state.config?.autoCheckUpdate !== false;
+    }
     el.settingsDialog.showModal();
   };
 
@@ -586,7 +617,8 @@ function bindEvents() {
       deepseekApiKey: el.cfgDeepseek.value.trim(),
       dailyGoal: Math.min(50000, Math.max(100, parseInt(el.cfgGoal.value, 10) || 1000)),
       dailyDate: state.dailyDate || todayKey(),
-      dailyDone: state.dailyDone
+      dailyDone: state.dailyDone,
+      autoCheckUpdate: el.cfgAutoUpdate ? el.cfgAutoUpdate.checked : true
     };
     await window.kanshu.saveConfig(state.config);
     el.settingsDialog.close();
