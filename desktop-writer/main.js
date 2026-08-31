@@ -4,6 +4,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const { randomUUID } = require('crypto');
 const { promptAndUpdate, checkForUpdate } = require('./updater');
+const { syncLibrary, listLibrary } = require('./library-sync');
 
 let mainWindow;
 const configPath = () => path.join(app.getPath('userData'), 'config.json');
@@ -148,6 +149,26 @@ ipcMain.handle('check-update', async (_e, opts = {}) => {
     return promptAndUpdate(mainWindow, { silentIfCurrent: false });
   }
   return checkForUpdate();
+});
+
+ipcMain.handle('sync-library', async (_e, opts = {}) => {
+  const cfg = await readConfig();
+  const booksDir = opts.booksDir || resolveBooksDir(cfg.workspace || '');
+  if (!booksDir || !cfg.workspace) {
+    throw new Error('请先选择 kanshu 仓库目录（含 default-books）');
+  }
+  return syncLibrary(booksDir, cfg, (msg) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('library-sync-progress', msg);
+    }
+  });
+});
+
+ipcMain.handle('list-library', async () => {
+  const cfg = await readConfig();
+  if (!cfg.workspace) return { books: [], folders: ['仓库书'], version: 0 };
+  const booksDir = resolveBooksDir(cfg.workspace);
+  return listLibrary(booksDir);
 });
 
 ipcMain.handle('get-config', readConfig);

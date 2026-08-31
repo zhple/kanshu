@@ -47,6 +47,11 @@ class BookRepository(
 
     suspend fun getByRemoteId(remoteId: String): BookEntity? = bookDao.getByRemoteId(remoteId)
 
+    suspend fun updateRemoteMetadata(bookId: Long, title: String, author: String) =
+        withContext(Dispatchers.IO) {
+            bookDao.updateMetadata(bookId, title.trim(), author.trim())
+        }
+
     suspend fun ensureFolder(name: String): Long = withContext(Dispatchers.IO) {
         folderDao.getAllOnce().firstOrNull { it.name == name }?.id
             ?: folderDao.insert(FolderEntity(name = name))

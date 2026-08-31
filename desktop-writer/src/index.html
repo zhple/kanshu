@@ -16,12 +16,15 @@
       </div>
       <div class="sidebar-actions">
         <button id="btn-workspace" class="btn secondary">打开目录</button>
-        <button id="btn-new" class="btn primary">新建文稿</button>
+        <button id="btn-sync-library" class="btn primary">同步书库</button>
+        <button id="btn-new" class="btn secondary">新建文稿</button>
       </div>
       <p id="workspace-label" class="workspace-label">未选择工作目录</p>
-      <div class="side-section">
-        <div class="side-section-title">文稿</div>
-        <ul id="draft-list" class="draft-list"></ul>
+      <div class="side-section side-section-grow">
+        <div class="side-section-title">共享书库 <span id="library-version" class="meta"></span></div>
+        <ul id="library-list" class="draft-list">
+          <li class="meta" style="padding:12px">点「同步书库」拉取朋友上传的书</li>
+        </ul>
       </div>
       <div class="side-section">
         <div class="side-section-title">章节大纲</div>

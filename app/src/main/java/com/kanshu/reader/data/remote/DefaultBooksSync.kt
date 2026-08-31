@@ -42,6 +42,9 @@ class DefaultBooksSync(
             val folderId = bookRepository.ensureFolder(folderName)
             val existing = bookRepository.getByRemoteId(spec.id)
             if (existing != null) {
+                if (existing.title != spec.title || existing.author != spec.author) {
+                    bookRepository.updateRemoteMetadata(existing.id, spec.title, spec.author)
+                }
                 if (existing.folderId != folderId) {
                     bookRepository.moveBook(existing.id, folderId)
                     moved++

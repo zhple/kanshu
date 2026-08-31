@@ -15,6 +15,24 @@ description: >-
 | 桌面 | `desktop-writer/`（Electron，与手机共用草稿格式） |
 | 块模型 | Android `WriteMarkers.kt` / Desktop `src/write-blocks.js` |
 
+## 书库互通（catalog.json）
+
+- **索引**：`default-books/catalog.json` 是唯一书库清单（title/author/folder/进度）
+- **Android**：书库页点云下载图标 → `DefaultBooksSync` 拉 catalog + 缺失正文/draft
+- **桌面**：侧栏「同步书库」→ `library-sync.js` 同样逻辑写入本地 `default-books/`
+- **上传**：任一端写作后点「上传 GitHub」→ 更新 catalog + `{id}.txt` + `{id}.draft.txt` + 插图
+- **朋友可见**：对方在手机/桌面各同步一次即可看到新书
+
+## 写小说用什么格式
+
+| 用途 | 文件 | 说明 |
+| --- | --- | --- |
+| **写作源稿（双端编辑）** | `{id}.draft.txt` | 块格式 + `[[IMG:...]]`，**日常写小说用这个** |
+| **阅读/分享正文** | `{id}.txt` | 保存时自动导出，UTF-8，插图变 `【图片：xxx】` |
+| **定稿带图** | `{id}.pdf` | 仅 Android 可导出 |
+| **索引** | `catalog.json` | 不要手改；由上传流程维护 |
+| **导入他人书** | EPUB/TXT | 仅阅读，不是写作主格式 |
+
 ## 共享格式（必须对齐）
 
 - 草稿：`{id}.draft.txt`

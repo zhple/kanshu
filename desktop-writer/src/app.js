@@ -24,7 +24,8 @@ const state = {
 };
 
 const el = {
-  draftList: document.getElementById('draft-list'),
+  libraryList: document.getElementById('library-list'),
+  libraryVersion: document.getElementById('library-version'),
   outlineList: document.getElementById('outline-list'),
   workspaceLabel: document.getElementById('workspace-label'),
   titleInput: document.getElementById('title-input'),
@@ -97,7 +98,7 @@ async function init() {
   }
   loadDailyProgress();
   updateWorkspaceLabel();
-  await refreshDraftList();
+  await refreshLibraryList();
   bindEvents();
   startAutoSave();
   render();
@@ -164,22 +165,55 @@ function renderOutline() {
   }
 }
 
-async function refreshDraftList() {
-  const { drafts, booksDir } = await window.kanshu.listDrafts();
-  state.booksDir = booksDir;
-  el.draftList.innerHTML = '';
-  if (!drafts.length) {
-    el.draftList.innerHTML = '<li class="meta" style="padding:12px">暂无 .draft.txt 文稿</li>';
+async function refreshLibraryList() {
+  const { books, version } = await window.kanshu.listLibrary();
+  if (el.libraryVersion) {
+    el.libraryVersion.textContent = version ? `v${version}` : '';
+  }
+  el.libraryList.innerHTML = '';
+  if (!books.length) {
+    el.libraryList.innerHTML = '<li class="meta" style="padding:12px">点「同步书库」拉取朋友上传的书</li>';
     return;
   }
-  for (const d of drafts) {
+  for (const book of books) {
     const li = document.createElement('li');
-    li.dataset.remoteId = d.remoteId;
-    if (d.remoteId === state.remoteId) li.classList.add('active');
-    const label = d.title || d.remoteId;
-    li.innerHTML = `<div class="name">${escapeHtml(label)}</div><div class="meta">${new Date(d.mtime).toLocaleString()}</div>`;
-    li.onclick = () => loadDraft(d.remoteId);
-    el.draftList.appendChild(li);
+    li.dataset.remoteId = book.id;
+    if (book.id === state.remoteId) li.classList.add('active');
+    const label = book.title || book.id;
+    const tags = [];
+    if (book.hasDraft) tags.push('可编辑');
+    else if (book.hasReadable) tags.push('只读');
+    if (book.localOnly) tags.push('本地');
+    const meta = tags.length ? tags.join(' · ') : (book.author || book.format || '');
+    li.innerHTML = `<div class="name">${escapeHtml(label)}</div><div class="meta">${escapeHtml(meta)}</div>`;
+    li.onclick = () => openLibraryBook(book);
+    el.libraryList.appendChild(li);
+  }
+}
+
+async function openLibraryBook(book) {
+  if (!book.hasDraft && !book.editable) {
+    setStatus(`「${book.title || book.id}」暂无 draft 文稿，可在手机端阅读`, true);
+    return;
+  }
+  await loadDraft(book.id);
+}
+
+async function syncLibraryFromRemote() {
+  const btn = document.getElementById('btn-sync-library');
+  if (btn) btn.disabled = true;
+  setStatus('正在同步书库…');
+  let unsub = null;
+  try {
+    unsub = window.kanshu.onLibrarySyncProgress?.((msg) => setStatus(msg));
+    const result = await window.kanshu.syncLibrary();
+    await refreshLibraryList();
+    setStatus(result?.message || '书库同步完成');
+  } catch (e) {
+    setStatus(e.message || '同步失败', true);
+  } finally {
+    if (typeof unsub === 'function') unsub();
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -198,7 +232,7 @@ async function loadDraft(remoteId) {
     rebuildPages();
     el.titleInput.value = state.title;
     render();
-    await refreshDraftList();
+    await refreshLibraryList();
     setStatus('已打开文稿');
   } catch (e) {
     setStatus(e.message || '打开失败', true);
@@ -371,7 +405,7 @@ async function saveDraft(fromAuto = false) {
     await persistDailyProgress();
     state.dirty = false;
     setStatus(fromAuto ? '已自动保存' : '已保存 draft.txt 与 txt 导出');
-    await refreshDraftList();
+    await refreshLibraryList();
     updateStats();
   } catch (e) {
     setStatus(e.message || '保存失败', true);
@@ -478,10 +512,12 @@ function bindEvents() {
     if (ws) {
       state.config = await window.kanshu.getConfig();
       updateWorkspaceLabel();
-      await refreshDraftList();
+      await refreshLibraryList();
       setStatus('工作目录已更新');
     }
   };
+
+  document.getElementById('btn-sync-library').onclick = () => syncLibraryFromRemote();
 
   document.getElementById('btn-new').onclick = async () => {
     const title = prompt('新文稿标题', '未命名') || '未命名';
@@ -497,7 +533,7 @@ function bindEvents() {
       el.titleInput.value = title;
       rebuildPages();
       render();
-      await refreshDraftList();
+      await refreshLibraryList();
       setStatus('已创建新文稿');
     } catch (e) {
       setStatus(e.message || '创建失败', true);
