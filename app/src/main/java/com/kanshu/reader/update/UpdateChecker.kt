@@ -32,46 +32,90 @@ data class AppUpdateInfo(
 )
 
 object UpdateChecker {
+    private const val RELEASES_LIST_API =
+        "https://api.github.com/repos/zhple/kanshu/releases?per_page=30"
+
     suspend fun check(): Result<AppUpdateInfo?> = withContext(Dispatchers.IO) {
         runCatching {
-            val api = BuildConfig.UPDATE_API_URL
-            if (api.isBlank()) return@runCatching null
+            val releases = fetchReleasesJson()
+            if (releases.isEmpty()) return@runCatching null
 
-            val conn = (URL(api).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                setRequestProperty("Accept", "application/vnd.github+json")
-                setRequestProperty("User-Agent", "Kanshu-Updater")
-            }
-            if (conn.responseCode !in 200..299) {
-                error("检查更新失败：HTTP ${conn.responseCode}")
-            }
-            val body = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
-            val json = JSONObject(body)
-            val tag = json.optString("tag_name").removePrefix("v")
-            val versionCode = parseVersionCode(tag, json.optString("name"))
-            if (versionCode <= BuildConfig.VERSION_CODE) return@runCatching null
+            var best: AppUpdateInfo? = null
+            for (json in releases) {
+                if (json.optBoolean("draft") || json.optBoolean("prerelease")) continue
+                val tagRaw = json.optString("tag_name")
+                if (!tagRaw.matches(Regex("""^v\d+$""", RegexOption.IGNORE_CASE))) continue
 
-            val assets = json.optJSONArray("assets") ?: return@runCatching null
-            var apkUrl = ""
-            for (i in 0 until assets.length()) {
-                val asset = assets.getJSONObject(i)
-                val name = asset.optString("name")
-                if (name.endsWith(".apk", ignoreCase = true)) {
-                    apkUrl = asset.optString("browser_download_url")
-                    break
+                val tag = tagRaw.removePrefix("v")
+                val versionCode = parseVersionCode(tag, json.optString("name"))
+                if (versionCode <= BuildConfig.VERSION_CODE) continue
+
+                val apkUrl = findApkAsset(json) ?: continue
+                val candidate = AppUpdateInfo(
+                    versionCode = versionCode,
+                    versionName = tag.ifBlank { versionCode.toString() },
+                    releaseNotes = json.optString("body").orEmpty(),
+                    apkUrl = apkUrl,
+                    htmlUrl = json.optString("html_url")
+                )
+                if (best == null || candidate.versionCode > best!!.versionCode) {
+                    best = candidate
                 }
             }
-            if (apkUrl.isBlank()) return@runCatching null
-
-            AppUpdateInfo(
-                versionCode = versionCode,
-                versionName = tag.ifBlank { versionCode.toString() },
-                releaseNotes = json.optString("body").orEmpty(),
-                apkUrl = apkUrl,
-                htmlUrl = json.optString("html_url")
-            )
+            best
         }
+    }
+
+    private fun fetchReleasesJson(): List<JSONObject> {
+        val api = BuildConfig.UPDATE_API_URL.ifBlank { RELEASES_LIST_API }
+        // 兼容旧配置：若仍指向 /releases/latest，改用列表接口以免误匹配 writer-v* Latest
+        val url = if (api.contains("/releases/latest")) RELEASES_LIST_API else api
+
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 12_000
+            readTimeout = 12_000
+            setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("User-Agent", "Kanshu-Updater")
+        }
+        if (conn.responseCode !in 200..299) {
+            error("检查更新失败：HTTP ${conn.responseCode}")
+        }
+        val body = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
+        val arr = org.json.JSONArray(body)
+        return buildList {
+            for (i in 0 until arr.length()) {
+                add(arr.getJSONObject(i))
+            }
+        }
+    }
+
+    private fun findApkAsset(json: JSONObject): String? {
+        val assets = json.optJSONArray("assets") ?: return null
+        for (i in 0 until assets.length()) {
+            val asset = assets.getJSONObject(i)
+            val name = asset.optString("name")
+            if (name.endsWith(".apk", ignoreCase = true)) {
+                return asset.optString("browser_download_url").takeIf { it.isNotBlank() }
+            }
+        }
+        return null
+    }
+
+    /** 保留供单条 release 解析（测试/兼容） */
+    internal fun parseReleaseJson(json: JSONObject): AppUpdateInfo? {
+        val tagRaw = json.optString("tag_name")
+        if (!tagRaw.matches(Regex("""^v\d+$""", RegexOption.IGNORE_CASE))) return null
+        val tag = tagRaw.removePrefix("v")
+        val versionCode = parseVersionCode(tag, json.optString("name"))
+        if (versionCode <= BuildConfig.VERSION_CODE) return null
+        val apkUrl = findApkAsset(json) ?: return null
+        return AppUpdateInfo(
+            versionCode = versionCode,
+            versionName = tag.ifBlank { versionCode.toString() },
+            releaseNotes = json.optString("body").orEmpty(),
+            apkUrl = apkUrl,
+            htmlUrl = json.optString("html_url")
+        )
     }
 
     private fun parseVersionCode(tag: String, name: String): Int {
