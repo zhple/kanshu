@@ -1,10 +1,12 @@
 package com.kanshu.reader.ui.library
 
+import androidx.activity.compose.BackHandler
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -89,7 +91,6 @@ import com.kanshu.reader.data.db.FolderEntity
 import com.kanshu.reader.data.prefs.AppThemeMode
 import com.kanshu.reader.ui.components.KanshuAmbientBackground
 import com.kanshu.reader.ui.components.KanshuEmptyState
-import com.kanshu.reader.ui.components.KanshuPremiumHero
 import com.kanshu.reader.ui.components.PremiumBookCover
 import com.kanshu.reader.ui.components.kanshuFloat
 import com.kanshu.reader.ui.components.kanshuPremiumCard
@@ -119,6 +120,7 @@ fun LibraryScreen(
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val currentFolderId by viewModel.currentFolderId.collectAsStateWithLifecycle()
     val currentFolderName by viewModel.currentFolderName.collectAsStateWithLifecycle()
+    val hubMode by viewModel.hubMode.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val sourceFilter by viewModel.sourceFilter.collectAsStateWithLifecycle()
     val syncMessage by viewModel.syncMessage.collectAsStateWithLifecycle()
@@ -148,6 +150,21 @@ fun LibraryScreen(
     var showTokenDialog by remember { mutableStateOf(false) }
     var tokenInput by remember { mutableStateOf("") }
     var pendingUploadBook by remember { mutableStateOf<BookEntity?>(null) }
+
+    val inFolder = currentFolderId != null
+    val atHome = hubMode == LibraryHubMode.HOME
+    val writing = hubMode == LibraryHubMode.WRITE
+    val reading = hubMode == LibraryHubMode.READ
+    val modeFolders = remember(folders, allBooks, hubMode) {
+        viewModel.foldersForCurrentMode(allBooks)
+    }
+    val rootCount = remember(allBooks, hubMode) {
+        viewModel.rootBookCountForCurrentMode(allBooks)
+    }
+
+    BackHandler(enabled = !atHome) {
+        viewModel.navigateBack()
+    }
 
 
     val installPermissionLauncher = rememberLauncherForActivityResult(
@@ -218,8 +235,6 @@ fun LibraryScreen(
         }
     }
 
-    val inFolder = currentFolderId != null
-
     LaunchedEffect(Unit) {
         UpdateChecker.check().onSuccess { info ->
             if (info != null) updateInfo = info
@@ -286,28 +301,35 @@ fun LibraryScreen(
         viewModel.uploadBookToRemote(book)
     }
 
+    val titleText = when {
+        atHome -> "看书"
+        inFolder -> currentFolderName ?: "分类"
+        writing -> "选择要写的文稿"
+        else -> "选择要读的书"
+    }
+    val subtitleText = when {
+        atHome -> "先选看书还是写作"
+        inFolder && writing -> "点文稿继续写 · 可新建"
+        inFolder -> "点开阅读"
+        writing -> "先选分类，再选文稿"
+        else -> "先选分类，再选书"
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    if (inFolder) {
-                        IconButton(onClick = viewModel::openRoot) {
+                    if (!atHome) {
+                        IconButton(onClick = { viewModel.navigateBack() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                         }
                     }
                 },
                 title = {
                     Column {
+                        Text(text = titleText, fontWeight = FontWeight.Bold)
                         Text(
-                            text = currentFolderName ?: "看书",
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = if (inFolder) {
-                                "文件夹 · ${if (themeMode == AppThemeMode.DAY) "白天" else "黑夜"}"
-                            } else {
-                                "简约 · 静读"
-                            },
+                            text = subtitleText,
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -320,7 +342,7 @@ fun LibraryScreen(
                     }) {
                         Icon(Icons.Default.Settings, contentDescription = "仓库上传设置")
                     }
-                    if (!inFolder) {
+                    if (!atHome && !inFolder) {
                         IconButton(onClick = {
                             folderNameInput = ""
                             showCreateFolder = true
@@ -328,8 +350,10 @@ fun LibraryScreen(
                             Icon(Icons.Default.CreateNewFolder, contentDescription = "新建文件夹")
                         }
                     }
-                    IconButton(onClick = { viewModel.syncDefaultBooks(manual = true) }) {
-                        Icon(Icons.Default.CloudDownload, contentDescription = "同步仓库书")
+                    if (!atHome) {
+                        IconButton(onClick = { viewModel.syncDefaultBooks(manual = true) }) {
+                            Icon(Icons.Default.CloudDownload, contentDescription = "同步书库")
+                        }
                     }
                     IconButton(
                         onClick = { checkUpdate(manual = true) },
@@ -368,114 +392,161 @@ fun LibraryScreen(
                 ) {
                     Icon(Icons.Default.Forum, contentDescription = "角色场景聊天")
                 }
-                Spacer(modifier = Modifier.height(12.dp))
-                SmallFloatingActionButton(
-                    onClick = { onWrite(currentFolderId) },
-                    modifier = Modifier.kanshuFloat(phaseOffset = 0.4f)
-                ) {
-                    Icon(Icons.Default.Edit, contentDescription = "写点东西")
+                if (writing) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    FloatingActionButton(
+                        onClick = { onWrite(currentFolderId) },
+                        modifier = Modifier.kanshuFloat(phaseOffset = 0.4f)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = "新建文稿")
+                    }
                 }
-                Spacer(modifier = Modifier.height(12.dp))
-                FloatingActionButton(
-                    onClick = {
-                        if (!importing) {
-                            picker.launch(
-                                arrayOf(
-                                    "text/plain",
-                                    "application/epub+zip",
-                                    "application/pdf",
-                                    "application/octet-stream",
-                                    "*/*"
+                if (reading || (writing && inFolder)) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    SmallFloatingActionButton(
+                        onClick = {
+                            if (!importing) {
+                                picker.launch(
+                                    arrayOf(
+                                        "text/plain",
+                                        "application/epub+zip",
+                                        "application/pdf",
+                                        "application/octet-stream",
+                                        "*/*"
+                                    )
                                 )
-                            )
-                        }
-                    },
-                    modifier = Modifier.kanshuFloat(amplitudeDp = 6.dp, phaseOffset = 0.6f)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "导入书籍")
+                            }
+                        },
+                        modifier = Modifier.kanshuFloat(phaseOffset = 0.6f)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "导入书籍")
+                    }
                 }
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        val showFolders = !inFolder && folders.isNotEmpty() && sourceFilter != BookSourceFilter.LOCAL
-        val empty = books.isEmpty() && !showFolders
-
         KanshuAmbientBackground(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = sourceFilter == BookSourceFilter.ALL,
-                        onClick = { viewModel.setSourceFilter(BookSourceFilter.ALL) },
-                        label = { Text("全部") }
-                    )
-                    FilterChip(
-                        selected = sourceFilter == BookSourceFilter.REMOTE,
-                        onClick = { viewModel.setSourceFilter(BookSourceFilter.REMOTE) },
-                        label = { Text("仓库书") }
-                    )
-                    FilterChip(
-                        selected = sourceFilter == BookSourceFilter.LOCAL,
-                        onClick = { viewModel.setSourceFilter(BookSourceFilter.LOCAL) },
-                        label = { Text("我的上传") }
+            when {
+                atHome -> {
+                    HubHome(
+                        onRead = { viewModel.enterMode(LibraryHubMode.READ) },
+                        onWrite = { viewModel.enterMode(LibraryHubMode.WRITE) }
                     )
                 }
+                else -> {
+                    val showFolderList = !inFolder
+                    val empty = if (showFolderList) {
+                        modeFolders.isEmpty() && rootCount == 0
+                    } else {
+                        books.isEmpty()
+                    }
 
-                if (empty) {
-                    KanshuEmptyState(
-                        icon = Icons.AutoMirrored.Filled.MenuBook,
-                        title = if (inFolder) "这个文件夹还是空的" else "书架空空如也",
-                        subtitle = if (inFolder) {
-                            "点右下角导入书籍，或从根目录把书移进来"
-                        } else {
-                            "可同步仓库书，也可本地导入后上传到远程仓库"
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        if (!inFolder) {
-                            item {
-                                KanshuPremiumHero(
-                                    title = "看书",
-                                    subtitle = "你的私人书架",
-                                    bookCount = books.size,
-                                    moodLabel = if (themeMode == AppThemeMode.DAY) "白天" else "夜间"
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        if (inFolder) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = sourceFilter == BookSourceFilter.ALL,
+                                    onClick = { viewModel.setSourceFilter(BookSourceFilter.ALL) },
+                                    label = { Text("全部") }
+                                )
+                                FilterChip(
+                                    selected = sourceFilter == BookSourceFilter.REMOTE,
+                                    onClick = { viewModel.setSourceFilter(BookSourceFilter.REMOTE) },
+                                    label = { Text("仓库书") }
+                                )
+                                FilterChip(
+                                    selected = sourceFilter == BookSourceFilter.LOCAL,
+                                    onClick = { viewModel.setSourceFilter(BookSourceFilter.LOCAL) },
+                                    label = { Text("我的上传") }
                                 )
                             }
                         }
-                        if (!inFolder && sourceFilter != BookSourceFilter.LOCAL) {
-                            itemsIndexed(folders, key = { _, f -> "f-${f.id}" }) { index, folder ->
-                                FolderRow(
-                                    folder = folder,
-                                    bookCount = viewModel.bookCountInFolder(folder.id, allBooks),
-                                    onClick = { viewModel.openFolder(folder) },
-                                    onDelete = { pendingDeleteFolder = folder },
-                                    modifier = Modifier.kanshuStaggerEnter(index)
-                                )
-                            }
-                        }
-                        itemsIndexed(books, key = { _, b -> "b-${b.id}" }) { index, book ->
-                            BookRow(
-                                book = book,
-                                onClick = { onOpenBook(book.id) },
-                                onMenu = { bookMenu = book },
-                                modifier = Modifier.kanshuStaggerEnter(index + folders.size)
+
+                        if (empty) {
+                            KanshuEmptyState(
+                                icon = if (writing) Icons.Default.Edit else Icons.AutoMirrored.Filled.MenuBook,
+                                title = when {
+                                    inFolder && writing -> "这个分类还没有文稿"
+                                    inFolder -> "这个分类还是空的"
+                                    writing -> "暂无可写文稿"
+                                    else -> "书库是空的"
+                                },
+                                subtitle = when {
+                                    writing -> "点右下角新建文稿，或先同步书库"
+                                    else -> "点上方云图标同步共享书库"
+                                },
+                                modifier = Modifier.fillMaxSize()
                             )
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                if (showFolderList) {
+                                    itemsIndexed(
+                                        modeFolders,
+                                        key = { _, pair -> "f-${pair.first.id}" }
+                                    ) { index, (folder, count) ->
+                                        FolderRow(
+                                            folder = folder,
+                                            bookCount = count,
+                                            onClick = { viewModel.openFolder(folder) },
+                                            onDelete = { pendingDeleteFolder = folder },
+                                            modifier = Modifier.kanshuStaggerEnter(index)
+                                        )
+                                    }
+                                    if (rootCount > 0) {
+                                        itemsIndexed(
+                                            allBooks.filter { book ->
+                                                book.folderId == null &&
+                                                    viewModel.matchesIntent(book) &&
+                                                    when (sourceFilter) {
+                                                        BookSourceFilter.ALL -> true
+                                                        BookSourceFilter.REMOTE -> book.isRemote
+                                                        BookSourceFilter.LOCAL -> !book.isRemote
+                                                    }
+                                            },
+                                            key = { _, b -> "root-${b.id}" }
+                                        ) { index, book ->
+                                            BookRow(
+                                                book = book,
+                                                onClick = {
+                                                    if (writing) onEditBook(book.id)
+                                                    else onOpenBook(book.id)
+                                                },
+                                                onMenu = { bookMenu = book },
+                                                modifier = Modifier.kanshuStaggerEnter(
+                                                    index + modeFolders.size
+                                                )
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    itemsIndexed(books, key = { _, b -> "b-${b.id}" }) { index, book ->
+                                        BookRow(
+                                            book = book,
+                                            onClick = {
+                                                if (writing) onEditBook(book.id)
+                                                else onOpenBook(book.id)
+                                            },
+                                            onMenu = { bookMenu = book },
+                                            modifier = Modifier.kanshuStaggerEnter(index)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -881,6 +952,94 @@ fun LibraryScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun HubHome(
+    onRead: () -> Unit,
+    onWrite: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp, vertical = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "你想做什么？",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = "从共享书库选一本书阅读，或打开文稿继续写",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        HubModeCard(
+            title = "看书",
+            desc = "阅读共享书库里的书",
+            icon = Icons.AutoMirrored.Filled.MenuBook,
+            onClick = onRead
+        )
+        HubModeCard(
+            title = "写作",
+            desc = "选一篇文稿或新建",
+            icon = Icons.Default.Edit,
+            onClick = onWrite
+        )
+    }
+}
+
+@Composable
+private fun HubModeCard(
+    title: String,
+    desc: String,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .kanshuPressScale(interactionSource)
+            .kanshuPremiumCard()
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(20.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = desc,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
     }
 }
 

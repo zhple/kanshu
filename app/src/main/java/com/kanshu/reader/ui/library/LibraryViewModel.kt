@@ -28,6 +28,13 @@ enum class BookSourceFilter {
     LOCAL
 }
 
+/** 与桌面端一致：启动先选看书或写作，再进分级书库。 */
+enum class LibraryHubMode {
+    HOME,
+    READ,
+    WRITE
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class LibraryViewModel(
     private val bookRepository: BookRepository,
@@ -35,6 +42,9 @@ class LibraryViewModel(
     private val defaultBooksSync: DefaultBooksSync,
     private val githubBooksUploader: GithubBooksUploader
 ) : ViewModel() {
+    private val _hubMode = MutableStateFlow(LibraryHubMode.HOME)
+    val hubMode: StateFlow<LibraryHubMode> = _hubMode.asStateFlow()
+
     private val _currentFolderId = MutableStateFlow<Long?>(null)
     val currentFolderId: StateFlow<Long?> = _currentFolderId.asStateFlow()
 
@@ -60,12 +70,12 @@ class LibraryViewModel(
     private val booksInFolder = _currentFolderId
         .flatMapLatest { folderId -> bookRepository.observeBooksInFolder(folderId) }
 
-    val books: StateFlow<List<BookEntity>> = combine(booksInFolder, _sourceFilter) { list, filter ->
-        when (filter) {
-            BookSourceFilter.ALL -> list
-            BookSourceFilter.REMOTE -> list.filter { it.isRemote }
-            BookSourceFilter.LOCAL -> list.filter { !it.isRemote }
-        }
+    val books: StateFlow<List<BookEntity>> = combine(
+        booksInFolder,
+        _sourceFilter,
+        _hubMode
+    ) { list, filter, mode ->
+        list.filter { matchesIntent(it, mode) && matchesSource(it, filter) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val allBooks: StateFlow<List<BookEntity>> = bookRepository.observeBooks()
@@ -78,8 +88,71 @@ class LibraryViewModel(
         syncDefaultBooks()
     }
 
+    fun enterMode(mode: LibraryHubMode) {
+        if (mode == LibraryHubMode.HOME) {
+            goHome()
+            return
+        }
+        _hubMode.value = mode
+        openRoot()
+    }
+
+    fun goHome() {
+        _hubMode.value = LibraryHubMode.HOME
+        openRoot()
+    }
+
+    /** @return true 表示已处理返回；false 表示已在首页，可交给系统退出。 */
+    fun navigateBack(): Boolean {
+        return when {
+            _hubMode.value == LibraryHubMode.HOME -> false
+            _currentFolderId.value != null -> {
+                openRoot()
+                true
+            }
+            else -> {
+                goHome()
+                true
+            }
+        }
+    }
+
     fun setSourceFilter(filter: BookSourceFilter) {
         _sourceFilter.value = filter
+    }
+
+    fun matchesIntent(book: BookEntity, mode: LibraryHubMode = _hubMode.value): Boolean {
+        return when (mode) {
+            LibraryHubMode.HOME -> true
+            LibraryHubMode.READ -> true
+            LibraryHubMode.WRITE -> isWritableBook(book)
+        }
+    }
+
+    private fun matchesSource(book: BookEntity, filter: BookSourceFilter): Boolean {
+        return when (filter) {
+            BookSourceFilter.ALL -> true
+            BookSourceFilter.REMOTE -> book.isRemote
+            BookSourceFilter.LOCAL -> !book.isRemote
+        }
+    }
+
+    fun isWritableBook(book: BookEntity): Boolean {
+        return book.format.equals("TXT", ignoreCase = true) ||
+            book.format.equals("PDF", ignoreCase = true)
+    }
+
+    fun foldersForCurrentMode(all: List<BookEntity>): List<Pair<FolderEntity, Int>> {
+        val mode = _hubMode.value
+        return folders.value.mapNotNull { folder ->
+            val count = all.count { it.folderId == folder.id && matchesIntent(it, mode) }
+            if (count > 0) folder to count else null
+        }
+    }
+
+    fun rootBookCountForCurrentMode(all: List<BookEntity>): Int {
+        val mode = _hubMode.value
+        return all.count { it.folderId == null && matchesIntent(it, mode) }
     }
 
     fun syncDefaultBooks(manual: Boolean = false) {
