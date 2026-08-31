@@ -1,14 +1,14 @@
 {
-  "version": "1.2.4",
-  "tag": "writer-v1.2.4",
-  "htmlUrl": "https://github.com/zhple/kanshu/releases/tag/writer-v1.2.4",
-  "releaseNotes": "写作区满屏不可拉伸、写满自动翻页；修复下一章；书库按分类展示；可阅读 TXT；文稿改名同步 catalog。",
+  "version": "1.2.5",
+  "tag": "writer-v1.2.5",
+  "htmlUrl": "https://github.com/zhple/kanshu/releases/tag/writer-v1.2.5",
+  "releaseNotes": "章节=新纸写作；章内翻页可用；大纲显示各章。",
   "setup": {
-    "name": "kanshu-writer-setup-1.2.4.exe",
-    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.4/kanshu-writer-setup-1.2.4.exe"
+    "name": "kanshu-writer-setup-1.2.5.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.5/kanshu-writer-setup-1.2.5.exe"
   },
   "portable": {
-    "name": "kanshu-writer-1.2.4-portable.exe",
-    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.4/kanshu-writer-1.2.4-portable.exe"
+    "name": "kanshu-writer-1.2.5-portable.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.2.5/kanshu-writer-1.2.5-portable.exe"
   }
 }

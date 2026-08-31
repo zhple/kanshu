@@ -62,6 +62,7 @@
         <span id="dirty-badge" class="dirty-badge hidden">未保存</span>
       </div>
       <p id="page-title" class="page-title">正文</p>
+      <p id="page-subtitle" class="page-subtitle">第 1 / 1 页</p>
       <div id="blocks" class="blocks"></div>
       <p id="status" class="status"></p>
     </main>
@@ -83,12 +84,13 @@
 
   <dialog id="chapter-dialog">
     <form method="dialog" id="chapter-form">
-      <h2>插入下一章</h2>
+      <h2>开始新章节</h2>
+      <p class="hint">相当于换一张空白纸；章节名会出现在大纲里。</p>
       <label for="chapter-subtitle">章节名（可选）</label>
       <input id="chapter-subtitle" type="text" placeholder="例如：雨夜" autocomplete="off" />
       <div class="dialog-actions">
         <button value="cancel" class="btn ghost" type="submit">取消</button>
-        <button value="ok" class="btn primary" type="submit">插入</button>
+        <button value="ok" class="btn primary" type="submit">开始写</button>
       </div>
     </form>
   </dialog>

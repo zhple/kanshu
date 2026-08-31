@@ -177,8 +177,92 @@ export function countChapters(content) {
   return content.split('\n').filter(line => chapterLineRegex.test(line.trim())).length;
 }
 
-export function nextChapterTitle(blocks, subtitle = '') {
-  const n = countChapters(serialize(blocks)) + 1;
+export function bodyToPages(text, budget = PAGE_CHAR_BUDGET) {
+  if (!text || !text.trim()) return [''];
+  const pages = [];
+  let rest = text;
+  while (rest) {
+    const { keep, overflow } = splitTextOverflow(rest, budget);
+    pages.push(keep);
+    if (!overflow) break;
+    rest = overflow;
+  }
+  return pages.length ? pages : [''];
+}
+
+/** 从 draft 块解析为「章节 + 页」结构，便于桌面端换页写作 */
+export function blocksToChapters(blocks) {
+  if (!blocks.length) return [{ title: '第1章', pages: [''], images: [] }];
+
+  const chapters = [];
+  let cur = null;
+
+  const startChapter = (title, initialText = '') => {
+    cur = { title, pages: bodyToPages(initialText), images: [] };
+    chapters.push(cur);
+  };
+
+  for (const block of blocks) {
+    if (block.type === 'image') {
+      if (!cur) startChapter('第1章');
+      cur.images.push({ ...block });
+      continue;
+    }
+
+    if (isChapterStart(block)) {
+      const title = chapterTitleOf(block);
+      const lines = block.text.split('\n');
+      const rest = lines.slice(1).join('\n').trim();
+      const hasContent = cur && (cur.images.length > 0 || cur.pages.some((p) => p.trim()));
+      if (!cur) {
+        startChapter(title, rest);
+      } else if (hasContent) {
+        startChapter(title, rest);
+      } else {
+        cur.title = title;
+        if (rest) cur.pages = bodyToPages(rest);
+      }
+    } else {
+      if (!cur) startChapter('第1章');
+      const merged = [cur.pages.join('\n\n'), block.text].filter((s) => s && s.trim()).join('\n\n');
+      cur.pages = bodyToPages(merged);
+    }
+  }
+
+  if (!chapters.length) return [{ title: '第1章', pages: [''], images: [] }];
+  return chapters;
+}
+
+export function chaptersToBlocks(chapters) {
+  const blocks = [];
+  for (const ch of chapters) {
+    blocks.push({ type: 'paragraph', text: ch.title, id: ch.titleBlockId || newId() });
+    for (const img of ch.images || []) blocks.push({ ...img });
+    const body = (ch.pages || ['']).join('\n\n').trimEnd();
+    blocks.push({ type: 'paragraph', text: body, id: ch.bodyBlockId || newId() });
+  }
+  if (!blocks.length) blocks.push({ type: 'paragraph', text: '', id: newId() });
+  return blocks;
+}
+
+export function chapterCharCount(chapter) {
+  return (chapter.pages || []).reduce(
+    (sum, p) => sum + [...p].filter((ch) => !/\s/.test(ch)).length,
+    0
+  );
+}
+
+export function chapterOutline(chapters) {
+  return chapters.map((ch, index) => ({
+    title: ch.title,
+    chapterIndex: index,
+    charCount: chapterCharCount(ch),
+    pageCount: (ch.pages || ['']).length
+  }));
+}
+
+export function nextChapterTitle(chapters, subtitle = '') {
+  const n = (Array.isArray(chapters) ? chapters.length : 0) + 1;
   const sub = String(subtitle || '').trim();
   return sub ? `第${n}章 ${sub}` : `第${n}章`;
 }

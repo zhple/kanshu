@@ -1,14 +1,16 @@
 import {
-  parse, serialize, buildPages, nextChapterTitle, newId,
-  charCount, outline, extractTitleFromContent,
-  pagePlainText, setPagePlainText, splitTextOverflow, PAGE_CHAR_BUDGET
+  parse, serialize, buildPages, newId,
+  charCount, extractTitleFromContent,
+  splitTextOverflow, PAGE_CHAR_BUDGET,
+  blocksToChapters, chaptersToBlocks, chapterOutline, chapterCharCount,
+  nextChapterTitle
 } from './write-blocks.js';
 
 const state = {
   remoteId: null,
   title: '',
-  blocks: [{ type: 'paragraph', text: '', id: newId() }],
-  pages: [],
+  chapters: [{ title: '第1章', pages: [''], images: [] }],
+  chapterIndex: 0,
   pageIndex: 0,
   booksDir: '',
   bookFolder: '仓库书',
@@ -24,7 +26,8 @@ const state = {
   dailyDate: '',
   aiMode: null,
   aiPreview: '',
-  autoSaveTimer: null
+  autoSaveTimer: null,
+  activeEditor: null
 };
 
 const el = {
@@ -36,6 +39,7 @@ const el = {
   blocks: document.getElementById('blocks'),
   pageLabel: document.getElementById('page-label'),
   pageTitle: document.getElementById('page-title'),
+  pageSubtitle: document.getElementById('page-subtitle'),
   status: document.getElementById('status'),
   statsText: document.getElementById('stats-text'),
   goalFill: document.getElementById('goal-fill'),
@@ -75,31 +79,49 @@ function setStatus(msg, isError = false) {
   el.status.style.color = isError ? 'var(--danger)' : 'var(--muted)';
 }
 
-function rebuildPages() {
-  state.pages = buildPages(state.blocks);
-  state.pageIndex = Math.min(state.pageIndex, Math.max(0, state.pages.length - 1));
-  const chars = charCount(state.blocks);
-  state.sessionGain = Math.max(0, chars - state.baselineChars);
+function allBlocks() {
+  return chaptersToBlocks(state.chapters);
 }
 
-function currentPageBlocks() {
-  const page = state.pages[state.pageIndex];
-  if (!page) return [];
-  return state.blocks.slice(page.startIndex, page.endExclusive);
+function totalCharCount() {
+  return state.chapters.reduce((sum, ch) => sum + chapterCharCount(ch), 0);
 }
 
-function focusedGlobalIndex() {
-  const page = state.pages[state.pageIndex];
-  if (!page) return 0;
-  for (let i = page.startIndex; i < page.endExclusive; i++) {
-    if (state.blocks[i]?.type === 'paragraph') return i;
+function currentChapter() {
+  return state.chapters[state.chapterIndex] || state.chapters[0];
+}
+
+function syncEditorToChapter() {
+  if (state.activeEditor && state.viewMode === 'write') {
+    const ch = currentChapter();
+    if (!ch.pages) ch.pages = [''];
+    ch.pages[state.pageIndex] = state.activeEditor.value;
   }
-  return page.startIndex;
+}
+
+function clampNavIndices() {
+  state.chapterIndex = Math.min(Math.max(0, state.chapterIndex), state.chapters.length - 1);
+  const ch = currentChapter();
+  if (!ch.pages || !ch.pages.length) ch.pages = [''];
+  state.pageIndex = Math.min(Math.max(0, state.pageIndex), ch.pages.length - 1);
+  state.sessionGain = Math.max(0, totalCharCount() - state.baselineChars);
 }
 
 function updateEditorChrome() {
   el.editorPane?.classList.toggle('read-mode', state.viewMode === 'read');
   if (el.titleInput) el.titleInput.readOnly = state.viewMode === 'read';
+}
+
+function updatePageChrome() {
+  const ch = currentChapter();
+  const pages = ch.pages || [''];
+  if (el.pageTitle) el.pageTitle.textContent = ch.title || '正文';
+  if (el.pageSubtitle) {
+    el.pageSubtitle.textContent = `第 ${state.pageIndex + 1} / ${pages.length} 页 · 本章 ${chapterCharCount(ch)} 字`;
+  }
+  if (el.pageLabel) {
+    el.pageLabel.textContent = `章 ${state.chapterIndex + 1}/${state.chapters.length}`;
+  }
 }
 
 async function init() {
@@ -140,7 +162,7 @@ async function persistDailyProgress() {
     state.dailyDone = 0;
   }
   state.dailyDone += Math.max(0, state.sessionGain);
-  state.baselineChars = charCount(state.blocks);
+  state.baselineChars = totalCharCount();
   state.sessionGain = 0;
   state.config = {
     ...state.config,
@@ -156,7 +178,7 @@ function updateWorkspaceLabel() {
 }
 
 function updateStats() {
-  const chars = charCount(state.blocks);
+  const chars = totalCharCount();
   const goal = Number(state.config?.dailyGoal || 1000);
   const today = state.dailyDone + state.sessionGain;
   el.statsText.textContent = `${chars} 字 · 本会话 +${state.sessionGain} · 今日 ${today} / ${goal}`;
@@ -165,17 +187,20 @@ function updateStats() {
 }
 
 function renderOutline() {
-  const items = outline(state.blocks);
+  const items = chapterOutline(state.chapters);
   el.outlineList.innerHTML = '';
   if (!items.length) {
-    el.outlineList.innerHTML = '<li class="meta">插入「下一章」后显示</li>';
+    el.outlineList.innerHTML = '<li class="meta">点「下一章」开始分章写作</li>';
     return;
   }
   for (const item of items) {
     const li = document.createElement('li');
-    li.innerHTML = `<div class="name">${escapeHtml(item.title)}</div><div class="meta">第 ${item.pageIndex + 1} 页 · ${item.charCount} 字</div>`;
+    if (item.chapterIndex === state.chapterIndex) li.classList.add('active');
+    li.innerHTML = `<div class="name">${escapeHtml(item.title)}</div><div class="meta">${item.charCount} 字 · ${item.pageCount} 页</div>`;
     li.onclick = () => {
-      state.pageIndex = item.pageIndex;
+      syncEditorToChapter();
+      state.chapterIndex = item.chapterIndex;
+      state.pageIndex = 0;
       state.autoFocusEditor = state.viewMode === 'write';
       render();
     };
@@ -251,14 +276,15 @@ async function openReader(remoteId) {
     state.booksDir = booksDir;
     state.title = title;
     state.bookFolder = folder || '仓库书';
-    state.blocks = parse(content);
+    state.chapters = blocksToChapters(parse(content));
+    state.chapterIndex = 0;
     state.pageIndex = 0;
     state.dirty = false;
     el.titleInput.value = title;
-    rebuildPages();
+    clampNavIndices();
     render();
     await refreshLibraryList();
-    setStatus('阅读模式（保存请先在手机端或上传后编辑 draft）');
+    setStatus('阅读模式');
   } catch (e) {
     setStatus(e.message || '打开失败', true);
   }
@@ -281,17 +307,17 @@ async function createNewDraft(title, folder = '仓库书') {
     state.title = trimmed;
     state.bookFolder = savedFolder || catFolder;
     state.booksDir = booksDir;
-    state.blocks = [{ type: 'paragraph', text: '', id: newId() }];
+    state.chapters = [{ title: '第1章', pages: [''], images: [] }];
+    state.chapterIndex = 0;
     state.pageIndex = 0;
     state.dirty = false;
     state.baselineChars = 0;
     state.sessionGain = 0;
     state.autoFocusEditor = true;
     el.titleInput.value = trimmed;
-    rebuildPages();
     render();
     await refreshLibraryList();
-    setStatus('已创建新文稿，标题可在顶部修改');
+    setStatus('已创建新文稿');
   } catch (e) {
     setStatus(e.message || '创建失败', true);
   }
@@ -324,28 +350,69 @@ function openChapterDialog() {
     setStatus('请先打开或新建一篇文稿', true);
     return;
   }
+  syncEditorToChapter();
   if (el.chapterSubtitle) el.chapterSubtitle.value = '';
   el.chapterDialog?.showModal();
   setTimeout(() => el.chapterSubtitle?.focus(), 0);
 }
 
 function insertNextChapter(subtitle) {
-  const title = nextChapterTitle(state.blocks, subtitle);
-  const last = state.blocks[state.blocks.length - 1];
-  if (last.type === 'paragraph' && !last.text.trim()) {
-    state.blocks.pop();
-  }
-  state.blocks.push({ type: 'paragraph', text: title, id: newId() });
-  state.blocks.push({ type: 'paragraph', text: '', id: newId() });
+  syncEditorToChapter();
+  const title = nextChapterTitle(state.chapters, subtitle);
+  state.chapters.push({ title, pages: [''], images: [] });
+  state.chapterIndex = state.chapters.length - 1;
+  state.pageIndex = 0;
   state.dirty = true;
-  rebuildPages();
-  const emptyIdx = state.blocks.length - 1;
-  state.pageIndex = Math.max(0, state.pages.findIndex(
-    (p) => emptyIdx >= p.startIndex && emptyIdx < p.endExclusive
-  ));
   state.autoFocusEditor = true;
   render();
-  setStatus(`已插入 ${title}`);
+  setStatus(`新章节：${title}（空白页）`);
+}
+
+function goPrevPage() {
+  syncEditorToChapter();
+  if (state.pageIndex > 0) {
+    state.pageIndex--;
+    state.autoFocusEditor = state.viewMode === 'write';
+    render();
+    return;
+  }
+  if (state.chapterIndex > 0) {
+    state.chapterIndex--;
+    const ch = currentChapter();
+    state.pageIndex = Math.max(0, (ch.pages?.length || 1) - 1);
+    state.autoFocusEditor = state.viewMode === 'write';
+    render();
+    setStatus(`上一章：${ch.title}`);
+  }
+}
+
+function goNextPage() {
+  syncEditorToChapter();
+  const ch = currentChapter();
+  if (!ch.pages) ch.pages = [''];
+
+  if (state.pageIndex < ch.pages.length - 1) {
+    state.pageIndex++;
+    state.autoFocusEditor = state.viewMode === 'write';
+    render();
+    return;
+  }
+
+  if (state.viewMode === 'write') {
+    ch.pages.push('');
+    state.pageIndex = ch.pages.length - 1;
+    state.dirty = true;
+    state.autoFocusEditor = true;
+    render();
+    setStatus('已翻到新的空白页');
+    return;
+  }
+
+  if (state.chapterIndex < state.chapters.length - 1) {
+    state.chapterIndex++;
+    state.pageIndex = 0;
+    render();
+  }
 }
 
 async function syncLibraryFromRemote() {
@@ -374,14 +441,15 @@ async function loadDraft(remoteId) {
     state.remoteId = remoteId;
     state.booksDir = booksDir;
     state.bookFolder = folder || '仓库书';
-    state.blocks = parse(content);
+    state.chapters = blocksToChapters(parse(content));
     state.title = title || extractTitleFromContent(content, remoteId);
+    state.chapterIndex = 0;
     state.pageIndex = 0;
     state.dirty = false;
-    state.baselineChars = charCount(state.blocks);
+    state.baselineChars = totalCharCount();
     state.sessionGain = 0;
     state.autoFocusEditor = true;
-    rebuildPages();
+    clampNavIndices();
     el.titleInput.value = state.title;
     render();
     await refreshLibraryList();
@@ -392,40 +460,34 @@ async function loadDraft(remoteId) {
 }
 
 function handlePageInput(ta) {
+  state.activeEditor = ta;
   const text = ta.value;
-  const page = state.pages[state.pageIndex];
-  if (!page) return;
+  const ch = currentChapter();
+  if (!ch.pages) ch.pages = [''];
 
   const { keep, overflow } = splitTextOverflow(text, PAGE_CHAR_BUDGET);
   if (overflow) {
-    setPagePlainText(state.blocks, page, keep);
-    state.dirty = true;
-    rebuildPages();
-    const nextPage = state.pages[state.pageIndex + 1];
-    if (nextPage) {
-      const nextText = pagePlainText(state.blocks, nextPage);
-      setPagePlainText(state.blocks, nextPage, overflow + (nextText ? `\n\n${nextText}` : ''));
-      state.pageIndex++;
+    ch.pages[state.pageIndex] = keep;
+    if (state.pageIndex + 1 < ch.pages.length) {
+      const tail = ch.pages[state.pageIndex + 1] || '';
+      ch.pages[state.pageIndex + 1] = overflow + (tail ? `\n\n${tail}` : '');
     } else {
-      state.blocks.push({ type: 'paragraph', text: overflow, id: newId() });
-      rebuildPages();
-      state.pageIndex = state.pages.length - 1;
+      ch.pages.push(overflow);
     }
+    state.pageIndex++;
+    state.dirty = true;
     state.autoFocusEditor = true;
     render();
     setStatus('本页已满，已自动翻到下一页');
     return;
   }
 
-  setPagePlainText(state.blocks, page, text);
+  ch.pages[state.pageIndex] = text;
   state.dirty = true;
-  const prevLen = state.pages.length;
-  rebuildPages();
+  clampNavIndices();
   updateStats();
+  updatePageChrome();
   renderOutline();
-  if (state.pages.length !== prevLen) {
-    el.pageLabel.textContent = `第 ${state.pageIndex + 1} / ${state.pages.length} 页`;
-  }
 }
 
 async function renderImageInline(wrap, block) {
@@ -446,11 +508,11 @@ async function renderImageInline(wrap, block) {
 }
 
 function render() {
-  rebuildPages();
+  syncEditorToChapter();
+  clampNavIndices();
   updateEditorChrome();
-  const page = state.pages[state.pageIndex];
-  el.pageLabel.textContent = `第 ${state.pageIndex + 1} / ${state.pages.length} 页`;
-  el.pageTitle.textContent = page?.title || '正文';
+  updatePageChrome();
+  state.activeEditor = null;
   el.blocks.innerHTML = '';
 
   if (state.viewMode === 'idle') {
@@ -461,10 +523,13 @@ function render() {
     return;
   }
 
+  const ch = currentChapter();
+  const pageText = (ch.pages || [''])[state.pageIndex] ?? '';
+
   if (state.viewMode === 'read') {
     const reader = document.createElement('div');
     reader.className = 'page-reader';
-    reader.textContent = pagePlainText(state.blocks, page);
+    reader.textContent = pageText;
     el.blocks.appendChild(reader);
     renderOutline();
     updateStats();
@@ -472,23 +537,21 @@ function render() {
     return;
   }
 
-  const pageBlocks = currentPageBlocks();
-  for (const block of pageBlocks) {
-    if (block.type === 'image') {
-      const wrap = document.createElement('div');
-      wrap.className = 'image-inline';
-      renderImageInline(wrap, block);
-      el.blocks.appendChild(wrap);
-    }
+  for (const block of ch.images || []) {
+    const wrap = document.createElement('div');
+    wrap.className = 'image-inline';
+    renderImageInline(wrap, block);
+    el.blocks.appendChild(wrap);
   }
 
   const wrap = document.createElement('div');
   wrap.className = 'page-editor-wrap';
   const ta = document.createElement('textarea');
   ta.className = 'page-editor';
-  ta.value = pagePlainText(state.blocks, page);
-  ta.placeholder = '在这里写作…写满本页会自动翻到下一页';
+  ta.value = pageText;
+  ta.placeholder = '在这里写本章内容…写满会自动翻页；「下一章」换一张新纸';
   ta.oninput = () => handlePageInput(ta);
+  ta.onfocus = () => { state.activeEditor = ta; };
   wrap.appendChild(ta);
   el.blocks.appendChild(wrap);
 
@@ -506,8 +569,9 @@ async function saveDraft(fromAuto = false) {
     if (!fromAuto) setStatus('请先新建或打开一篇文稿', true);
     return;
   }
+  syncEditorToChapter();
   state.title = el.titleInput.value.trim() || state.remoteId;
-  const content = serialize(state.blocks);
+  const content = serialize(allBlocks());
   try {
     await window.kanshu.saveDraft({
       remoteId: state.remoteId,
@@ -537,12 +601,13 @@ async function uploadGithub() {
   if (!state.remoteId) return;
   if (state.dirty) await saveDraft();
   state.title = el.titleInput.value.trim() || state.remoteId;
+  syncEditorToChapter();
   try {
     setStatus('正在上传…');
     const msg = await window.kanshu.githubUpload({
       remoteId: state.remoteId,
       title: state.title,
-      content: serialize(state.blocks),
+      content: serialize(allBlocks()),
       booksDir: state.booksDir
     });
     setStatus(msg);
@@ -569,18 +634,15 @@ function openAiDialog(mode) {
 async function runAiAssist(hint) {
   const mode = state.aiMode;
   if (!mode) return;
-  const gi = focusedGlobalIndex();
-  const focus = state.blocks[gi];
-  if (!focus || focus.type !== 'paragraph') {
-    setStatus('请先聚焦一段文字', true);
+  syncEditorToChapter();
+  const ch = currentChapter();
+  const focusText = (ch.pages || [''])[state.pageIndex] || '';
+  if (mode !== 'CONTINUE' && !focusText.trim()) {
+    setStatus('润色/扩写需要当前页有内容', true);
     return;
   }
-  const focusText = focus.text.trim();
-  if (mode !== 'CONTINUE' && !focusText) {
-    setStatus('润色/扩写需要当前段落有内容', true);
-    return;
-  }
-  const preceding = serialize(state.blocks.slice(0, gi)).slice(-1800);
+  const blocks = allBlocks();
+  const preceding = serialize(blocks).slice(-1800);
   setStatus('AI 生成中…');
   try {
     const text = await window.kanshu.writeAssist({
@@ -603,14 +665,13 @@ function applyAiPreview() {
   const mode = state.aiMode;
   const preview = (state.aiPreview || '').trim();
   if (!mode || !preview) return;
-  const gi = focusedGlobalIndex();
-  const cur = state.blocks[gi];
-  if (!cur || cur.type !== 'paragraph') return;
+  syncEditorToChapter();
+  const ch = currentChapter();
+  const cur = (ch.pages || [''])[state.pageIndex] || '';
   if (mode === 'CONTINUE') {
-    const base = cur.text.trimEnd();
-    cur.text = base ? `${base}\n\n${preview}` : preview;
+    ch.pages[state.pageIndex] = cur.trimEnd() ? `${cur.trimEnd()}\n\n${preview}` : preview;
   } else {
-    cur.text = preview;
+    ch.pages[state.pageIndex] = preview;
   }
   state.dirty = true;
   state.aiPreview = '';
@@ -632,7 +693,6 @@ function bindEvents() {
   };
 
   document.getElementById('btn-sync-library').onclick = () => syncLibraryFromRemote();
-
   document.getElementById('btn-new').onclick = () => openNewDraftDialog();
 
   el.newDraftForm?.addEventListener('submit', async (e) => {
@@ -662,20 +722,8 @@ function bindEvents() {
 
   document.getElementById('btn-save').onclick = () => saveDraft(false);
   document.getElementById('btn-upload').onclick = uploadGithub;
-  document.getElementById('btn-prev-page').onclick = () => {
-    if (state.pageIndex > 0) {
-      state.pageIndex--;
-      state.autoFocusEditor = state.viewMode === 'write';
-      render();
-    }
-  };
-  document.getElementById('btn-next-page').onclick = () => {
-    if (state.pageIndex < state.pages.length - 1) {
-      state.pageIndex++;
-      state.autoFocusEditor = state.viewMode === 'write';
-      render();
-    }
-  };
+  document.getElementById('btn-prev-page').onclick = () => goPrevPage();
+  document.getElementById('btn-next-page').onclick = () => goNextPage();
   document.getElementById('btn-focus').onclick = () => {
     state.focusMode = !state.focusMode;
     document.getElementById('btn-focus').textContent = state.focusMode ? '退出专注' : '专注';
@@ -691,10 +739,10 @@ function bindEvents() {
     }
     const picked = await window.kanshu.pickImage(state.remoteId);
     if (!picked) return;
-    const page = state.pages[state.pageIndex];
-    const insertAt = page ? page.endExclusive - 1 : state.blocks.length - 1;
-    const idx = Math.max(0, insertAt);
-    state.blocks.splice(idx, 0, { type: 'image', path: picked.relativePath, widthPercent: 1, id: newId() });
+    syncEditorToChapter();
+    const ch = currentChapter();
+    if (!ch.images) ch.images = [];
+    ch.images.push({ type: 'image', path: picked.relativePath, widthPercent: 1, id: newId() });
     state.dirty = true;
     render();
   };
@@ -800,6 +848,14 @@ function bindEvents() {
       state.focusMode = !state.focusMode;
       document.getElementById('btn-focus').textContent = state.focusMode ? '退出专注' : '专注';
       render();
+    }
+    if (state.viewMode === 'write' && (e.ctrlKey || e.metaKey) && e.key === 'ArrowRight') {
+      e.preventDefault();
+      goNextPage();
+    }
+    if (state.viewMode === 'write' && (e.ctrlKey || e.metaKey) && e.key === 'ArrowLeft') {
+      e.preventDefault();
+      goPrevPage();
     }
   });
 }
