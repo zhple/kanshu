@@ -92,6 +92,11 @@ function syncEditorToChapter() {
   }
 }
 
+function commitEditor() {
+  syncEditorToChapter();
+  state.activeEditor = null;
+}
+
 function clampNavIndices() {
   state.chapterIndex = Math.min(Math.max(0, state.chapterIndex), state.chapters.length - 1);
   const ch = currentChapter();
@@ -113,7 +118,7 @@ function updatePageChrome() {
     el.pageSubtitle.textContent = `第 ${state.pageIndex + 1} / ${pages.length} 页 · 本章 ${chapterCharCount(ch)} 字`;
   }
   if (el.pageLabel) {
-    el.pageLabel.textContent = `章 ${state.chapterIndex + 1}/${state.chapters.length}`;
+    el.pageLabel.textContent = `第 ${state.pageIndex + 1} / ${pages.length} 页`;
   }
 }
 
@@ -191,7 +196,7 @@ function renderOutline() {
     if (item.chapterIndex === state.chapterIndex) li.classList.add('active');
     li.innerHTML = `<div class="name">${escapeHtml(item.title)}</div><div class="meta">${item.charCount} 字 · ${item.pageCount} 页</div>`;
     li.onclick = () => {
-      syncEditorToChapter();
+      commitEditor();
       state.chapterIndex = item.chapterIndex;
       state.pageIndex = 0;
       state.autoFocusEditor = state.viewMode === 'write';
@@ -262,6 +267,7 @@ async function openLibraryBook(book) {
 
 async function openReader(remoteId) {
   if (state.dirty && !confirm('当前文稿未保存，确定切换？')) return;
+  commitEditor();
   try {
     const { content, title, booksDir, folder } = await window.kanshu.readBook(remoteId);
     state.viewMode = 'read';
@@ -343,14 +349,14 @@ function openChapterDialog() {
     setStatus('请先打开或新建一篇文稿', true);
     return;
   }
-  syncEditorToChapter();
+  commitEditor();
   if (el.chapterSubtitle) el.chapterSubtitle.value = '';
   el.chapterDialog?.showModal();
   setTimeout(() => el.chapterSubtitle?.focus(), 0);
 }
 
 function insertNextChapter(subtitle) {
-  syncEditorToChapter();
+  commitEditor();
   const title = nextChapterTitle(state.chapters, subtitle);
   state.chapters.push({ title, pages: [''], images: [] });
   state.chapterIndex = state.chapters.length - 1;
@@ -362,7 +368,7 @@ function insertNextChapter(subtitle) {
 }
 
 function goPrevPage() {
-  syncEditorToChapter();
+  commitEditor();
   if (state.pageIndex > 0) {
     state.pageIndex--;
     state.autoFocusEditor = state.viewMode === 'write';
@@ -380,7 +386,7 @@ function goPrevPage() {
 }
 
 function goNextPage() {
-  syncEditorToChapter();
+  commitEditor();
   const ch = currentChapter();
   if (!ch.pages) ch.pages = [''];
 
@@ -428,6 +434,7 @@ async function syncLibraryFromRemote() {
 
 async function loadDraft(remoteId) {
   if (state.dirty && !confirm('当前文稿未保存，确定切换？')) return;
+  commitEditor();
   try {
     const { content, booksDir, title, folder } = await window.kanshu.readDraft(remoteId);
     state.viewMode = 'write';
@@ -494,6 +501,7 @@ function applyPageOverflow(keep, overflow) {
   state.pageIndex++;
   state.dirty = true;
   state.autoFocusEditor = true;
+  state.activeEditor = null;
   render();
   setStatus('本页已满，已自动翻到下一页');
 }
@@ -550,7 +558,6 @@ async function renderImageInline(wrap, block) {
 }
 
 function render() {
-  syncEditorToChapter();
   clampNavIndices();
   updateEditorChrome();
   updatePageChrome();
@@ -612,7 +619,7 @@ async function saveDraft(fromAuto = false) {
     if (!fromAuto) setStatus('请先新建或打开一篇文稿', true);
     return;
   }
-  syncEditorToChapter();
+  commitEditor();
   state.title = el.titleInput.value.trim() || state.remoteId;
   const content = serialize(allBlocks());
   try {
@@ -644,7 +651,7 @@ async function uploadGithub() {
   if (!state.remoteId) return;
   if (state.dirty) await saveDraft();
   state.title = el.titleInput.value.trim() || state.remoteId;
-  syncEditorToChapter();
+  commitEditor();
   try {
     setStatus('正在上传…');
     const msg = await window.kanshu.githubUpload({
@@ -703,6 +710,7 @@ function bindEvents() {
   document.getElementById('btn-prev-page').onclick = () => goPrevPage();
   document.getElementById('btn-next-page').onclick = () => goNextPage();
   document.getElementById('btn-focus').onclick = () => {
+    commitEditor();
     state.focusMode = !state.focusMode;
     document.getElementById('btn-focus').textContent = state.focusMode ? '退出专注' : '专注';
     render();
@@ -717,7 +725,7 @@ function bindEvents() {
     }
     const picked = await window.kanshu.pickImage(state.remoteId);
     if (!picked) return;
-    syncEditorToChapter();
+    commitEditor();
     const ch = currentChapter();
     if (!ch.images) ch.images = [];
     ch.images.push({ type: 'image', path: picked.relativePath, widthPercent: 1, id: newId() });
@@ -799,6 +807,7 @@ function bindEvents() {
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === '\\') {
       e.preventDefault();
+      commitEditor();
       state.focusMode = !state.focusMode;
       document.getElementById('btn-focus').textContent = state.focusMode ? '退出专注' : '专注';
       render();
