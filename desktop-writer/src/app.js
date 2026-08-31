@@ -43,6 +43,9 @@ const el = {
   aiPreviewBody: document.getElementById('ai-preview-body'),
   aiHint: document.getElementById('ai-hint'),
   aiDialogTitle: document.getElementById('ai-dialog-title'),
+  newDraftDialog: document.getElementById('new-draft-dialog'),
+  newDraftTitle: document.getElementById('new-draft-title'),
+  newDraftForm: document.getElementById('new-draft-form'),
   cfgToken: document.getElementById('cfg-token'),
   cfgOwner: document.getElementById('cfg-owner'),
   cfgRepo: document.getElementById('cfg-repo'),
@@ -98,8 +101,12 @@ async function init() {
   }
   loadDailyProgress();
   updateWorkspaceLabel();
-  await refreshLibraryList();
   bindEvents();
+  try {
+    await refreshLibraryList();
+  } catch (e) {
+    setStatus(e.message || '书库列表加载失败', true);
+  }
   startAutoSave();
   render();
 }
@@ -166,6 +173,7 @@ function renderOutline() {
 }
 
 async function refreshLibraryList() {
+  if (!el.libraryList) return;
   const { books, version } = await window.kanshu.listLibrary();
   if (el.libraryVersion) {
     el.libraryVersion.textContent = version ? `v${version}` : '';
@@ -197,6 +205,41 @@ async function openLibraryBook(book) {
     return;
   }
   await loadDraft(book.id);
+}
+
+async function createNewDraft(title) {
+  const trimmed = (title || '').trim() || '未命名';
+  if (!state.config?.workspace?.trim()) {
+    setStatus('请先点击「打开目录」选择 kanshu 仓库目录', true);
+    return;
+  }
+  try {
+    const { remoteId } = await window.kanshu.createDraft(trimmed);
+    state.remoteId = remoteId;
+    state.title = trimmed;
+    state.blocks = [{ type: 'paragraph', text: '', id: newId() }];
+    state.pageIndex = 0;
+    state.dirty = false;
+    state.baselineChars = 0;
+    state.sessionGain = 0;
+    el.titleInput.value = trimmed;
+    rebuildPages();
+    render();
+    await refreshLibraryList();
+    setStatus('已创建新文稿');
+  } catch (e) {
+    setStatus(e.message || '创建失败', true);
+  }
+}
+
+function openNewDraftDialog() {
+  if (!state.config?.workspace?.trim()) {
+    setStatus('请先点击「打开目录」选择 kanshu 仓库目录', true);
+    return;
+  }
+  if (el.newDraftTitle) el.newDraftTitle.value = '未命名';
+  el.newDraftDialog?.showModal();
+  setTimeout(() => el.newDraftTitle?.select(), 0);
 }
 
 async function syncLibraryFromRemote() {
@@ -519,26 +562,19 @@ function bindEvents() {
 
   document.getElementById('btn-sync-library').onclick = () => syncLibraryFromRemote();
 
-  document.getElementById('btn-new').onclick = async () => {
-    const title = prompt('新文稿标题', '未命名') || '未命名';
-    try {
-      const { remoteId } = await window.kanshu.createDraft(title);
-      state.remoteId = remoteId;
-      state.title = title;
-      state.blocks = [{ type: 'paragraph', text: '', id: newId() }];
-      state.pageIndex = 0;
-      state.dirty = false;
-      state.baselineChars = 0;
-      state.sessionGain = 0;
-      el.titleInput.value = title;
-      rebuildPages();
-      render();
-      await refreshLibraryList();
-      setStatus('已创建新文稿');
-    } catch (e) {
-      setStatus(e.message || '创建失败', true);
+  document.getElementById('btn-new').onclick = () => openNewDraftDialog();
+
+  el.newDraftForm?.addEventListener('submit', async (e) => {
+    const submitter = e.submitter;
+    if (submitter && submitter.value === 'cancel') {
+      el.newDraftDialog.close();
+      return;
     }
-  };
+    e.preventDefault();
+    const title = el.newDraftTitle?.value || '未命名';
+    el.newDraftDialog.close();
+    await createNewDraft(title);
+  });
 
   document.getElementById('btn-save').onclick = () => saveDraft(false);
   document.getElementById('btn-upload').onclick = uploadGithub;

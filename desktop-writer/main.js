@@ -270,7 +270,13 @@ ipcMain.handle('save-draft', async (_e, payload) => {
 
 ipcMain.handle('create-draft', async (_e, title) => {
   const cfg = await readConfig();
+  if (!cfg.workspace?.trim()) {
+    throw new Error('请先点击「打开目录」选择 kanshu 仓库目录');
+  }
   const booksDir = resolveBooksDir(cfg.workspace);
+  if (!booksDir?.trim()) {
+    throw new Error('工作目录无效，请重新选择');
+  }
   await fsp.mkdir(booksDir, { recursive: true });
   const remoteId = 'user-' + randomUUID().replace(/-/g, '').slice(0, 10);
   const draftPath = path.join(booksDir, `${remoteId}.draft.txt`);

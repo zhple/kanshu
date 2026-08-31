@@ -67,6 +67,18 @@
     </main>
   </div>
 
+  <dialog id="new-draft-dialog">
+    <form method="dialog" id="new-draft-form">
+      <h2>新建文稿</h2>
+      <label for="new-draft-title">标题</label>
+      <input id="new-draft-title" type="text" value="未命名" autocomplete="off" />
+      <div class="dialog-actions">
+        <button value="cancel" class="btn ghost" type="submit">取消</button>
+        <button value="ok" class="btn primary" type="submit">创建</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="settings-dialog">
     <form method="dialog" id="settings-form">
       <h2>设置</h2>
