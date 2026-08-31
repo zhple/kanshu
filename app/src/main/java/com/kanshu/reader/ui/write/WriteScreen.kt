@@ -279,9 +279,9 @@ fun WriteScreen(
                         pageLabel = "${state.pageIndex + 1} / ${state.pages.size}",
                         pageTitle = state.pages.getOrNull(state.pageIndex)?.title.orEmpty(),
                         canPrev = state.pageIndex > 0,
-                        canNext = state.pageIndex < state.pages.lastIndex,
-                        onPrev = { viewModel.setPageIndex(state.pageIndex - 1) },
-                        onNext = { viewModel.setPageIndex(state.pageIndex + 1) }
+                        canNext = true,
+                        onPrev = viewModel::goPrevPage,
+                        onNext = viewModel::goNextPage
                     )
                 }
             }
@@ -397,6 +397,7 @@ fun WriteScreen(
                             enabled = !state.saving,
                             resolveImage = viewModel::resolveImageFile,
                             onPageTextChange = viewModel::updatePagePlainText,
+                            onCharBudgetChange = viewModel::setPageCharBudget,
                             onImageWidth = viewModel::setImageWidth,
                             onDelete = viewModel::removeBlock
                         )
@@ -458,6 +459,7 @@ private fun WritePageEditor(
     enabled: Boolean,
     resolveImage: (String) -> java.io.File?,
     onPageTextChange: (String, Int) -> Unit,
+    onCharBudgetChange: (Int) -> Unit,
     onImageWidth: (Int, Float) -> Unit,
     onDelete: (Int) -> Unit
 ) {
@@ -498,10 +500,17 @@ private fun WritePageEditor(
                 .fillMaxWidth()
                 .onSizeChanged { size ->
                     val linePx = with(density) { lineHeight.toPx() }
-                    val charPx = with(density) { 16.sp.toPx() }
-                    val lines = (size.height / linePx).toInt().coerceAtLeast(1)
-                    val charsPerLine = (size.width / charPx).toInt().coerceAtLeast(12)
-                    charBudget = (lines * charsPerLine * 0.92).toInt().coerceAtLeast(100)
+                    val charPx = with(density) { 16.sp.toPx() * 0.95f }
+                    val padPx = with(density) { 24.dp.toPx() }
+                    val usableH = (size.height - padPx).coerceAtLeast(linePx)
+                    val usableW = (size.width - padPx).coerceAtLeast(charPx * 12)
+                    val lines = (usableH / linePx).toInt().coerceAtLeast(1)
+                    val charsPerLine = (usableW / charPx).toInt().coerceAtLeast(12)
+                    val next = (lines * charsPerLine * 0.88).toInt().coerceIn(80, WriteBlocks.PAGE_CHAR_BUDGET)
+                    if (kotlin.math.abs(charBudget - next) >= 8) {
+                        charBudget = next
+                        onCharBudgetChange(next)
+                    }
                 },
             decorationBox = { inner ->
                 Box(
@@ -512,7 +521,7 @@ private fun WritePageEditor(
                 ) {
                     if (pageText.isEmpty()) {
                         Text(
-                            "在这里写…写满会自动翻页；「下一章」换一张新纸",
+                            "在这里写…写满会自动翻页；下方按钮也可翻页",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyLarge.copy(lineHeight = lineHeight)
                         )

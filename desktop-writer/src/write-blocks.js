@@ -54,6 +54,8 @@ export function serialize(blocks) {
       if (block.text.length > 0 || parts.length === 0) parts.push(block.text);
     } else if (block.type === 'image') {
       parts.push(imageMarker(block.path, block.widthPercent));
+    } else if (block.type === 'pageBreak') {
+      parts.push(PAGE_BREAK_MARKER);
     }
   }
   return parts.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
@@ -64,6 +66,7 @@ export function contentLooksEmpty(blocks) {
 }
 
 export const PAGE_CHAR_BUDGET = 1600;
+export const PAGE_BREAK_MARKER = '[[PAGE]]';
 
 const chapterLineRegex = /^第[\d零一二三四五六七八九十百千两]+章|^序章|^终章|^楔子|^尾声|^番外|^Chapter\s+\d+/;
 
@@ -79,6 +82,10 @@ function pushParagraphChunks(result, text) {
   const chunks = trimmed ? trimmed.split(/\n\n+/) : [''];
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i].trim();
+    if (chunk === PAGE_BREAK_MARKER) {
+      result.push({ type: 'pageBreak', id: newId() });
+      continue;
+    }
     if (chunk.length > 0 || (result.length === 0 && i === 0)) {
       result.push({ type: 'paragraph', text: chunk, id: newId() });
     }
@@ -137,9 +144,9 @@ export function setPagePlainText(blocks, page, text) {
   const next = [];
   let textApplied = false;
   for (const block of segment) {
-    if (block.type === 'image') {
+    if (block.type === 'image' || block.type === 'pageBreak') {
       next.push(block);
-    } else if (!textApplied) {
+    } else if (block.type === 'paragraph' && !textApplied) {
       next.push({ type: 'paragraph', text, id: block.id || newId() });
       textApplied = true;
     }
@@ -172,7 +179,8 @@ export function pageCharWeight(text) {
 }
 
 function blockWeight(block) {
-  if (block.type === 'paragraph') return pageCharWeight(block.text);
+  if (block.type === 'paragraph') return [...block.text].filter((ch) => !/\s/.test(ch)).length;
+  if (block.type === 'pageBreak') return 0;
   return 500;
 }
 
@@ -188,8 +196,9 @@ export function chapterTitleOf(block) {
   return first ? first.slice(0, 24) : '正文';
 }
 
-export function buildPages(blocks) {
+export function buildPages(blocks, budget = PAGE_CHAR_BUDGET) {
   if (!blocks.length) return [{ title: '正文', startIndex: 0, endExclusive: 0 }];
+  const pageBudget = Math.max(80, budget);
   const pages = [];
   let start = 0;
   let title = '开头';
@@ -205,6 +214,13 @@ export function buildPages(blocks) {
   }
 
   blocks.forEach((block, index) => {
+    if (block.type === 'pageBreak') {
+      flush(index);
+      start = index + 1;
+      weight = 0;
+      title = `续·${pageOrdinal}`;
+      return;
+    }
     const chapter = isChapterStart(block);
     if (chapter && index > start) {
       flush(index);
@@ -213,7 +229,7 @@ export function buildPages(blocks) {
       title = chapterTitleOf(block);
     }
     const w = blockWeight(block);
-    if (weight > 0 && weight + w > PAGE_CHAR_BUDGET) {
+    if (weight > 0 && weight + w > pageBudget) {
       flush(index);
       title = chapter ? chapterTitleOf(block) : `续·${pageOrdinal}`;
     }

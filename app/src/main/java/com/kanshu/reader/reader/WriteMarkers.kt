@@ -42,6 +42,11 @@ sealed class WriteBlock {
         val widthPercent: Float = 1f,
         override val id: String = UUID.randomUUID().toString()
     ) : WriteBlock()
+
+    /** 硬分页（写作时「下一页」插入）；序列化为 [[PAGE]]。 */
+    data class PageBreak(
+        override val id: String = UUID.randomUUID().toString()
+    ) : WriteBlock()
 }
 
 /** 编辑器翻页用：按章节 / 篇幅切开的一页。 */
@@ -58,9 +63,10 @@ object WriteBlocks {
         """^第[\d零一二三四五六七八九十百千两]+章|^序章|^终章|^楔子|^尾声|^番外|^Chapter\s+\d+"""
     )
 
-    /** 单页大约容纳的文字量；超出则软分页，避免超长一屏。 */
+    /** 单页大约容纳的文字量；编辑时会按视口再收紧。 */
     const val PAGE_CHAR_BUDGET = 1600
     private const val IMAGE_WEIGHT = 500
+    const val PAGE_BREAK_MARKER = "[[PAGE]]"
 
     fun newId(): String = UUID.randomUUID().toString()
 
@@ -75,6 +81,10 @@ object WriteBlocks {
         val chunks = if (trimmed.isEmpty()) listOf("") else trimmed.split(Regex("\n\n+"))
         for (chunk in chunks) {
             val c = chunk.trim()
+            if (c == PAGE_BREAK_MARKER) {
+                result += WriteBlock.PageBreak()
+                continue
+            }
             if (c.isNotEmpty() || result.isEmpty()) {
                 result += WriteBlock.Paragraph(c)
             }
@@ -157,6 +167,9 @@ object WriteBlocks {
                 is WriteBlock.Image -> {
                     parts += WriteMarkers.imageMarker(block.path, block.widthPercent)
                 }
+                is WriteBlock.PageBreak -> {
+                    parts += PAGE_BREAK_MARKER
+                }
             }
         }
         return parts.joinToString("\n\n")
@@ -169,13 +182,15 @@ object WriteBlocks {
             when (it) {
                 is WriteBlock.Paragraph -> it.text.isNotBlank()
                 is WriteBlock.Image -> true
+                is WriteBlock.PageBreak -> false
             }
         }
     }
 
     fun blockWeight(block: WriteBlock): Int = when (block) {
-        is WriteBlock.Paragraph -> block.text.length.coerceAtLeast(40)
+        is WriteBlock.Paragraph -> block.text.count { !it.isWhitespace() }
         is WriteBlock.Image -> IMAGE_WEIGHT
+        is WriteBlock.PageBreak -> 0
     }
 
     fun isChapterStart(block: WriteBlock): Boolean {
@@ -205,6 +220,7 @@ object WriteBlocks {
             when (block) {
                 is WriteBlock.Paragraph -> block.text.count { !it.isWhitespace() }
                 is WriteBlock.Image -> 0
+                is WriteBlock.PageBreak -> 0
             }
         }
     }
@@ -241,11 +257,15 @@ object WriteBlocks {
     }
 
     /**
-     * 按「章节标题」硬分页，章节内再按篇幅软分页。
-     * 参考 Notion 分块编辑：不把整篇塞进一条超长滚动条。
+     * 按「章节标题 / 分页标记」硬分页，章节内再按 [budget] 软分页。
+     * budget 应接近当前视口可写字数，否则写满拆页后又会被合并回同一页。
      */
-    fun buildPages(blocks: List<WriteBlock>): List<WriteEditPage> {
+    fun buildPages(
+        blocks: List<WriteBlock>,
+        budget: Int = PAGE_CHAR_BUDGET
+    ): List<WriteEditPage> {
         if (blocks.isEmpty()) return listOf(WriteEditPage("正文", 0, 0))
+        val pageBudget = budget.coerceAtLeast(80)
         val pages = mutableListOf<WriteEditPage>()
         var start = 0
         var title = "开头"
@@ -261,6 +281,13 @@ object WriteBlocks {
         }
 
         blocks.forEachIndexed { index, block ->
+            if (block is WriteBlock.PageBreak) {
+                flush(index)
+                start = index + 1
+                weight = 0
+                title = "续·$pageOrdinal"
+                return@forEachIndexed
+            }
             val chapter = isChapterStart(block)
             if (chapter && index > start) {
                 flush(index)
@@ -269,7 +296,7 @@ object WriteBlocks {
                 title = chapterTitleOf(block)
             }
             val w = blockWeight(block)
-            if (weight > 0 && weight + w > PAGE_CHAR_BUDGET) {
+            if (weight > 0 && weight + w > pageBudget) {
                 flush(index)
                 title = if (chapter) chapterTitleOf(block) else "续·$pageOrdinal"
             }
@@ -277,7 +304,14 @@ object WriteBlocks {
         }
         flush(blocks.size)
         if (pages.isEmpty()) {
-            pages += WriteEditPage("正文", 0, blocks.size)
+            // 全文只有分页符等：给一个空页壳，方便继续写
+            val emptyAt = blocks.indexOfFirst { it is WriteBlock.Paragraph }.takeIf { it >= 0 }
+                ?: blocks.size.coerceAtLeast(0)
+            if (emptyAt < blocks.size) {
+                pages += WriteEditPage("正文", emptyAt, emptyAt + 1)
+            } else {
+                pages += WriteEditPage("正文", 0, blocks.size)
+            }
         }
         return pages
     }
@@ -296,6 +330,7 @@ object WriteBlocks {
         for (block in segment) {
             when (block) {
                 is WriteBlock.Image -> next += block
+                is WriteBlock.PageBreak -> next += block
                 is WriteBlock.Paragraph -> if (!textApplied) {
                     next += block.copy(text = text)
                     textApplied = true

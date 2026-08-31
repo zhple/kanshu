@@ -36,6 +36,7 @@ data class WriteUiState(
     val pages: List<WriteEditPage> = listOf(WriteEditPage("正文", 0, 1)),
     val outline: List<WriteBlocks.OutlineItem> = emptyList(),
     val pageIndex: Int = 0,
+    val pageCharBudget: Int = WriteBlocks.PAGE_CHAR_BUDGET,
     val saveFormat: BookRepository.WriteSaveFormat = BookRepository.WriteSaveFormat.TXT,
     val uploadToRemote: Boolean = false,
     val bookId: Long? = null,
@@ -112,7 +113,7 @@ class WriteViewModel(
     }
 
     private fun rebuild(state: WriteUiState): WriteUiState {
-        val pages = WriteBlocks.buildPages(state.blocks)
+        val pages = WriteBlocks.buildPages(state.blocks, state.pageCharBudget)
         val pageIndex = state.pageIndex.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
         val chars = WriteBlocks.charCount(state.blocks)
         val sessionGain = (chars - baselineChars).coerceAtLeast(0)
@@ -143,6 +144,42 @@ class WriteViewModel(
         }
     }
 
+    fun setPageCharBudget(budget: Int) {
+        val next = budget.coerceIn(80, WriteBlocks.PAGE_CHAR_BUDGET)
+        val cur = _uiState.value.pageCharBudget
+        if (kotlin.math.abs(cur - next) < 8) return
+        _uiState.update { rebuild(it.copy(pageCharBudget = next)) }
+    }
+
+    fun goPrevPage() {
+        val state = _uiState.value
+        if (state.pageIndex > 0) {
+            setPageIndex(state.pageIndex - 1)
+        }
+    }
+
+    fun goNextPage() {
+        val state = _uiState.value
+        if (state.pageIndex < state.pages.lastIndex) {
+            setPageIndex(state.pageIndex + 1)
+            return
+        }
+        // 最后一页再点「下一页」：硬分页 + 空白页（与桌面一致）
+        markDirty { s ->
+            val blocks = s.blocks.toMutableList()
+            blocks += WriteBlock.PageBreak()
+            blocks += WriteBlock.Paragraph("")
+            s.copy(blocks = blocks, focusedBlockIndex = blocks.lastIndex)
+        }
+        val rebuilt = _uiState.value
+        _uiState.update {
+            it.copy(
+                pageIndex = (rebuilt.pages.size - 1).coerceAtLeast(0),
+                statusHint = "已翻到新的空白页"
+            )
+        }
+    }
+
     fun jumpToOutline(item: WriteBlocks.OutlineItem) {
         _uiState.update {
             it.copy(
@@ -165,23 +202,28 @@ class WriteViewModel(
         _uiState.update { it.copy(showOutline = show) }
     }
 
-    fun updatePagePlainText(text: String, charBudget: Int = WriteBlocks.PAGE_CHAR_BUDGET) {
+    fun updatePagePlainText(text: String, charBudget: Int = _uiState.value.pageCharBudget) {
+        val budget = charBudget.coerceIn(80, WriteBlocks.PAGE_CHAR_BUDGET)
         val state = _uiState.value
         val page = state.pages.getOrNull(state.pageIndex) ?: return
-        val split = WriteBlocks.splitTextOverflow(text, charBudget)
+        val split = WriteBlocks.splitTextOverflow(text, budget)
         if (split.overflow.isNotEmpty()) {
             val blocks = state.blocks.toMutableList()
             WriteBlocks.setPagePlainText(blocks, page, split.keep)
-            val pagesAfterKeep = WriteBlocks.buildPages(blocks)
+            // 硬分页，确保溢出段一定在下一页（避免软分页预算不一致又并回本页）
+            val pagesAfterKeep = WriteBlocks.buildPages(blocks, budget)
             val currentPage = pagesAfterKeep.getOrNull(state.pageIndex) ?: page
             val insertAt = currentPage.endExclusive.coerceAtMost(blocks.size)
-            blocks.add(insertAt, WriteBlock.Paragraph(split.overflow))
-            val overflowIndex = insertAt
+            blocks.add(insertAt, WriteBlock.PageBreak())
+            blocks.add(insertAt + 1, WriteBlock.Paragraph(split.overflow))
+            val overflowIndex = insertAt + 1
             _uiState.update {
-                val rebuilt = rebuild(it.copy(blocks = blocks, dirty = true))
+                val rebuilt = rebuild(
+                    it.copy(blocks = blocks, dirty = true, pageCharBudget = budget)
+                )
                 val pageIdx = rebuilt.pages.indexOfFirst { p ->
                     overflowIndex in p.startIndex until p.endExclusive
-                }.coerceAtLeast(rebuilt.pageIndex)
+                }.coerceAtLeast((rebuilt.pageIndex + 1).coerceAtMost(rebuilt.pages.lastIndex))
                 rebuilt.copy(
                     pageIndex = pageIdx,
                     statusHint = "本页已满，已自动翻到下一页"
@@ -191,7 +233,7 @@ class WriteViewModel(
             markDirty { s ->
                 val blocks = s.blocks.toMutableList()
                 WriteBlocks.setPagePlainText(blocks, page, text)
-                s.copy(blocks = blocks)
+                s.copy(blocks = blocks, pageCharBudget = budget)
             }
         }
     }
