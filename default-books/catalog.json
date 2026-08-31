@@ -1,5 +1,5 @@
 {
-  "version": 11,
+  "version": 12,
   "folders": [
     "仓库书"
   ],
@@ -146,6 +146,17 @@
       "chapterIndex": 0,
       "scrollOffset": 0,
       "lastReadAt": 1788152901207
+    },
+    {
+      "id": "user-795b737a99",
+      "title": "游戏剧情设定相关",
+      "author": "我写的",
+      "file": "user-795b737a99.txt",
+      "format": "TXT",
+      "folder": "仓库书",
+      "chapterIndex": 0,
+      "scrollOffset": 0,
+      "lastReadAt": 1788155832356
     }
   ]
 }
