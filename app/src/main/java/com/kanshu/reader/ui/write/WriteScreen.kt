@@ -106,8 +106,6 @@ fun WriteScreen(
     val context = LocalContext.current
     var showChapterDialog by remember { mutableStateOf(false) }
     var chapterSubtitle by remember { mutableStateOf("") }
-    var showGoalDialog by remember { mutableStateOf(false) }
-    var goalInput by remember { mutableStateOf("") }
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -162,34 +160,6 @@ fun WriteScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showChapterDialog = false }) { Text("取消") }
-            }
-        )
-    }
-
-    if (showGoalDialog) {
-        AlertDialog(
-            onDismissRequest = { showGoalDialog = false },
-            title = { Text("每日写作目标") },
-            text = {
-                OutlinedTextField(
-                    value = goalInput,
-                    onValueChange = { goalInput = it.filter(Char::isDigit).take(5) },
-                    label = { Text("字数") },
-                    supportingText = { Text("当前 ${state.dailyGoal} 字/天") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        goalInput.toIntOrNull()?.let { viewModel.setDailyGoal(it) }
-                        showGoalDialog = false
-                    }
-                ) { Text("保存") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showGoalDialog = false }) { Text("取消") }
             }
         )
     }
@@ -302,13 +272,7 @@ fun WriteScreen(
                     WriteStatsBar(
                         charCount = state.charCount,
                         sessionGain = state.sessionGain,
-                        dailyDone = state.dailyDone,
-                        dailyGoal = state.dailyGoal,
                         focusMode = state.focusMode,
-                        onGoalClick = {
-                            goalInput = state.dailyGoal.toString()
-                            showGoalDialog = true
-                        },
                         onExitFocus = viewModel::toggleFocusMode
                     )
                     WritePageBar(
@@ -464,51 +428,25 @@ fun WriteScreen(
 private fun WriteStatsBar(
     charCount: Int,
     sessionGain: Int,
-    dailyDone: Int,
-    dailyGoal: Int,
     focusMode: Boolean,
-    onGoalClick: () -> Unit,
     onExitFocus: () -> Unit
 ) {
-    val progress = if (dailyGoal <= 0) 0f else (dailyDone.toFloat() / dailyGoal).coerceIn(0f, 1f)
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "全文 $charCount · 今日 $dailyDone / $dailyGoal",
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(onClick = onGoalClick)
-            )
-            if (sessionGain > 0) {
-                Text(
-                    "+$sessionGain",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(Modifier.width(8.dp))
-            }
-            if (focusMode) {
-                IconButton(onClick = onExitFocus) {
-                    Icon(Icons.Default.FullscreenExit, contentDescription = "退出专注")
-                }
+        Text(
+            "全文 $charCount 字" + if (sessionGain > 0) " · 本会话 +$sessionGain" else "",
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.weight(1f)
+        )
+        if (focusMode) {
+            IconButton(onClick = onExitFocus) {
+                Icon(Icons.Default.FullscreenExit, contentDescription = "退出专注")
             }
         }
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-        )
     }
 }
 

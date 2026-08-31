@@ -1,14 +1,14 @@
 {
-  "version": "1.3.0",
-  "tag": "writer-v1.3.0",
-  "htmlUrl": "https://github.com/zhple/kanshu/releases/tag/writer-v1.3.0",
-  "releaseNotes": "启动时选择看书或写作；书库按分类逐级进入，无滚动条；侧栏增加返回上一级。",
+  "version": "1.3.1",
+  "tag": "writer-v1.3.1",
+  "htmlUrl": "https://github.com/zhple/kanshu/releases/tag/writer-v1.3.1",
+  "releaseNotes": "去掉每日写作目标；字数栏仅显示全文与本会话增量。",
   "setup": {
-    "name": "kanshu-writer-setup-1.3.0.exe",
-    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.3.0/kanshu-writer-setup-1.3.0.exe"
+    "name": "kanshu-writer-setup-1.3.1.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.3.1/kanshu-writer-setup-1.3.1.exe"
   },
   "portable": {
-    "name": "kanshu-writer-1.3.0-portable.exe",
-    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.3.0/kanshu-writer-1.3.0-portable.exe"
+    "name": "kanshu-writer-1.3.1-portable.exe",
+    "url": "https://github.com/zhple/kanshu/releases/download/writer-v1.3.1/kanshu-writer-1.3.1-portable.exe"
   }
 }

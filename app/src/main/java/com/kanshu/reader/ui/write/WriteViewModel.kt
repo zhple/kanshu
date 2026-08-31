@@ -18,7 +18,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -26,9 +25,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 data class WriteUiState(
     val loading: Boolean = false,
@@ -46,8 +42,6 @@ data class WriteUiState(
     val chapterCount: Int = 0,
     val charCount: Int = 0,
     val sessionGain: Int = 0,
-    val dailyDone: Int = 0,
-    val dailyGoal: Int = 1000,
     val focusedBlockIndex: Int = 0,
     val focusMode: Boolean = false,
     val showOutline: Boolean = false,
@@ -75,27 +69,12 @@ class WriteViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private var baselineChars = 0
-    private var lastSyncedSessionGain = 0
     private var autoSaveJob: Job? = null
-    private var dailySyncJob: Job? = null
 
     init {
         if (bookId != null) load(bookId) else {
             baselineChars = 0
             startAutoSaveLoop()
-            startDailySyncLoop()
-        }
-        viewModelScope.launch {
-            combine(
-                themePreferences.writeDailyGoal,
-                themePreferences.writeDailyProgress
-            ) { goal, progress ->
-                goal to progress
-            }.collect { (goal, progress) ->
-                val today = todayKey()
-                val done = if (progress.second == today) progress.first else 0
-                _uiState.update { it.copy(dailyGoal = goal, dailyDone = done) }
-            }
         }
     }
 
@@ -107,11 +86,6 @@ class WriteViewModel(
                 require(bookRepository.canEditBook(id)) { "这篇文稿无法编辑" }
                 val content = bookRepository.readTextContent(id)
                 val blocks = WriteBlocks.parse(content)
-                val format = when {
-                    book.format.equals("PDF", ignoreCase = true) ->
-                        BookRepository.WriteSaveFormat.PDF
-                    else -> BookRepository.WriteSaveFormat.TXT
-                }
                 baselineChars = WriteBlocks.charCount(blocks)
                 _uiState.update {
                     rebuild(
@@ -120,7 +94,7 @@ class WriteViewModel(
                             title = book.title,
                             blocks = blocks,
                             bookId = id,
-                            saveFormat = format,
+                            saveFormat = BookRepository.WriteSaveFormat.TXT,
                             focusedBlockIndex = 0,
                             pageIndex = 0,
                             dirty = false,
@@ -129,7 +103,6 @@ class WriteViewModel(
                     )
                 }
                 startAutoSaveLoop()
-                startDailySyncLoop()
             }.onFailure { e ->
                 _uiState.update {
                     it.copy(loading = false, error = e.message ?: "加载失败")
@@ -290,12 +263,6 @@ class WriteViewModel(
         _uiState.update { it.copy(uploadToRemote = value) }
     }
 
-    fun setDailyGoal(goal: Int) {
-        viewModelScope.launch {
-            themePreferences.setWriteDailyGoal(goal)
-        }
-    }
-
     fun consumeSaved() {
         _uiState.update { it.copy(savedMessage = null, savedBookId = null) }
     }
@@ -393,25 +360,6 @@ class WriteViewModel(
         }
     }
 
-    private fun startDailySyncLoop() {
-        dailySyncJob?.cancel()
-        dailySyncJob = viewModelScope.launch {
-            while (isActive) {
-                delay(4_000L)
-                syncDailyProgress()
-            }
-        }
-    }
-
-    private suspend fun syncDailyProgress() {
-        val gain = _uiState.value.sessionGain
-        val delta = gain - lastSyncedSessionGain
-        if (delta <= 0) return
-        val done = themePreferences.addWriteDailyChars(delta, todayKey())
-        lastSyncedSessionGain = gain
-        _uiState.update { it.copy(dailyDone = done) }
-    }
-
     private suspend fun persist(navigateAway: Boolean, fromAuto: Boolean) {
         val state = _uiState.value
         if (state.saving || state.autoSaving) return
@@ -455,11 +403,9 @@ class WriteViewModel(
                 val upload = githubBooksUploader.uploadBook(book).getOrThrow()
                 message = "$message，并上传到仓库：${upload.remoteId}"
             }
-            syncDailyProgress()
             id to message
         }.onSuccess { (id, message) ->
             baselineChars = WriteBlocks.charCount(_uiState.value.blocks)
-            lastSyncedSessionGain = 0
             _uiState.update {
                 it.copy(
                     saving = false,
@@ -495,9 +441,6 @@ class WriteViewModel(
                 t.isNotEmpty() && chapterLineRegex.containsMatchIn(t)
             }
         }
-
-        private fun todayKey(): String =
-            SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
         fun factory(
             bookId: Long?,

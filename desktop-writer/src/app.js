@@ -28,8 +28,6 @@ const state = {
   editorWantsFocus: false,
   baselineChars: 0,
   sessionGain: 0,
-  dailyDone: 0,
-  dailyDate: '',
   autoSaveTimer: null,
   activeEditor: null
 };
@@ -49,7 +47,6 @@ const el = {
   pageSubtitle: document.getElementById('page-subtitle'),
   status: document.getElementById('status'),
   statsText: document.getElementById('stats-text'),
-  goalFill: document.getElementById('goal-fill'),
   dirtyBadge: document.getElementById('dirty-badge'),
   sidebar: document.getElementById('sidebar'),
   settingsDialog: document.getElementById('settings-dialog'),
@@ -65,7 +62,6 @@ const el = {
   cfgOwner: document.getElementById('cfg-owner'),
   cfgRepo: document.getElementById('cfg-repo'),
   cfgBranch: document.getElementById('cfg-branch'),
-  cfgGoal: document.getElementById('cfg-goal'),
   cfgAutoUpdate: document.getElementById('cfg-auto-update'),
   appVersion: document.getElementById('app-version'),
   updateProgress: document.getElementById('update-progress'),
@@ -73,11 +69,6 @@ const el = {
   updateProgressFill: document.getElementById('update-progress-fill'),
   updateProgressText: document.getElementById('update-progress-text')
 };
-
-function todayKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 function setHubStatus(msg, isError = false) {
   if (!el.hubStatus) return;
@@ -194,7 +185,6 @@ async function init() {
   } catch {
     if (el.appVersion) el.appVersion.textContent = '';
   }
-  loadDailyProgress();
   updateWorkspaceLabel();
   bindUpdateProgressListener();
   showUpdateProgress({ phase: 'hide' });
@@ -206,34 +196,6 @@ async function init() {
   }
   startAutoSave();
   updateLayout();
-}
-
-function loadDailyProgress() {
-  const today = todayKey();
-  if (state.config?.dailyDate === today) {
-    state.dailyDone = Number(state.config.dailyDone || 0);
-    state.dailyDate = today;
-  } else {
-    state.dailyDone = 0;
-    state.dailyDate = today;
-  }
-}
-
-async function persistDailyProgress() {
-  const today = todayKey();
-  if (state.dailyDate !== today) {
-    state.dailyDate = today;
-    state.dailyDone = 0;
-  }
-  state.dailyDone += Math.max(0, state.sessionGain);
-  state.baselineChars = totalCharCount();
-  state.sessionGain = 0;
-  state.config = {
-    ...state.config,
-    dailyDate: state.dailyDate,
-    dailyDone: state.dailyDone
-  };
-  await window.kanshu.saveConfig(state.config);
 }
 
 function updateWorkspaceLabel() {
@@ -454,10 +416,8 @@ async function refreshLibraryList() {
 
 function updateStats() {
   const chars = totalCharCount();
-  const goal = Number(state.config?.dailyGoal || 1000);
-  const today = state.dailyDone + state.sessionGain;
-  el.statsText.textContent = `${chars} 字 · 本会话 +${state.sessionGain} · 今日 ${today} / ${goal}`;
-  el.goalFill.style.width = `${Math.min(100, (today / Math.max(goal, 1)) * 100)}%`;
+  const gain = state.sessionGain > 0 ? ` · 本会话 +${state.sessionGain}` : '';
+  el.statsText.textContent = `${chars} 字${gain}`;
   el.dirtyBadge.classList.toggle('hidden', !state.dirty);
 }
 
@@ -893,7 +853,8 @@ async function saveDraft(fromAuto = false) {
       exportTxt: true,
       folder: state.bookFolder
     });
-    await persistDailyProgress();
+    state.baselineChars = totalCharCount();
+    state.sessionGain = 0;
     state.dirty = false;
     setStatus(fromAuto ? '已自动保存' : '已保存 draft.txt 与 txt 导出');
     await refreshLibraryList();
@@ -1013,7 +974,6 @@ function bindEvents() {
     el.cfgOwner.value = state.config?.githubOwner || 'zhple';
     el.cfgRepo.value = state.config?.githubRepo || 'kanshu';
     el.cfgBranch.value = state.config?.githubBranch || 'main';
-    el.cfgGoal.value = String(state.config?.dailyGoal || 1000);
     if (el.cfgAutoUpdate) {
       el.cfgAutoUpdate.checked = state.config?.autoCheckUpdate !== false;
     }
@@ -1033,9 +993,6 @@ function bindEvents() {
       githubOwner: el.cfgOwner.value.trim() || 'zhple',
       githubRepo: el.cfgRepo.value.trim() || 'kanshu',
       githubBranch: el.cfgBranch.value.trim() || 'main',
-      dailyGoal: Math.min(50000, Math.max(100, parseInt(el.cfgGoal.value, 10) || 1000)),
-      dailyDate: state.dailyDate || todayKey(),
-      dailyDone: state.dailyDone,
       autoCheckUpdate: el.cfgAutoUpdate ? el.cfgAutoUpdate.checked : true
     };
     await window.kanshu.saveConfig(state.config);
