@@ -106,6 +106,73 @@ class DeepSeekClient(
         parseSceneImageSpec(raw, dna)
     }
 
+    enum class WriteAssistMode {
+        CONTINUE,
+        POLISH,
+        EXPAND
+    }
+
+    /**
+     * 写作助手：续写 / 润色 / 扩写。只返回正文片段，不含解释。
+     */
+    suspend fun writeAssist(
+        mode: WriteAssistMode,
+        title: String,
+        precedingText: String,
+        focusText: String,
+        userHint: String = ""
+    ): String = withContext(Dispatchers.IO) {
+        val system = when (mode) {
+            WriteAssistMode.CONTINUE -> """
+                你是中文小说写作助手。根据前文自然续写 200–500 字。
+                要求：保持人称、语气与风格一致；不要复述前文；不要输出标题或解释；只输出续写正文。
+            """.trimIndent()
+            WriteAssistMode.POLISH -> """
+                你是中文小说润色助手。在保持原意与情节的前提下润色段落：
+                修正语病、提升文采与节奏，不要大幅扩写或删减情节。
+                只输出润色后的段落正文，不要解释。
+            """.trimIndent()
+            WriteAssistMode.EXPAND -> """
+                你是中文小说扩写助手。把给定段落扩写到约 1.5–2.5 倍长度，
+                补充感官细节、对话与心理活动，不改变既有情节走向。
+                只输出扩写后的段落正文，不要解释。
+            """.trimIndent()
+        }
+        val user = buildString {
+            if (title.isNotBlank()) {
+                appendLine("【书名】$title")
+                appendLine()
+            }
+            if (precedingText.isNotBlank()) {
+                appendLine("【前文摘录】")
+                appendLine(precedingText.takeLast(1800))
+                appendLine()
+            }
+            when (mode) {
+                WriteAssistMode.CONTINUE -> {
+                    appendLine("请从这里继续写：")
+                    appendLine(focusText.takeLast(600).ifBlank { "（请开篇）" })
+                }
+                WriteAssistMode.POLISH, WriteAssistMode.EXPAND -> {
+                    appendLine("【待处理段落】")
+                    appendLine(focusText.ifBlank { error("请先选中或聚焦一段文字") })
+                }
+            }
+            val hint = userHint.trim()
+            if (hint.isNotEmpty()) {
+                appendLine()
+                appendLine("【作者补充】$hint")
+            }
+        }
+        chatOnce(
+            messages = listOf(
+                ChatMessage("system", system),
+                ChatMessage("user", user)
+            ),
+            temperature = if (mode == WriteAssistMode.POLISH) 0.55 else 0.85
+        ).trim()
+    }
+
     fun chatStream(
         systemPrompt: String,
         history: List<ChatMessage>,

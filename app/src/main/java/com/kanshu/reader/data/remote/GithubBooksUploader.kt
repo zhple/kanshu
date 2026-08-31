@@ -73,6 +73,7 @@ class GithubBooksUploader(
                     contentBytes = draft.readBytes(),
                     message = "Add draft: ${book.title}"
                 )
+                uploadDraftAssets(token, draft)
             }
 
             val folderId = bookRepository.ensureFolder(folderName)
@@ -177,6 +178,26 @@ class GithubBooksUploader(
                 contentBytes = draft.readBytes(),
                 message = "Update draft: ${book.title}"
             )
+            uploadDraftAssets(token, draft)
+        }
+    }
+
+    private fun uploadDraftAssets(token: String, draft: java.io.File) {
+        val content = runCatching { draft.readText() }.getOrNull() ?: return
+        val uploaded = mutableSetOf<String>()
+        for (match in com.kanshu.reader.reader.WriteMarkers.imageRegex.findAll(content)) {
+            val relative = match.groupValues[1].trim()
+            val fileName = relative.substringAfterLast('/').substringAfterLast('\\')
+            if (fileName.isBlank() || fileName in uploaded) continue
+            val local = bookRepository.resolveWriteImage(relative) ?: continue
+            if (!local.exists() || local.length() <= 0L) continue
+            putContent(
+                token = token,
+                path = "default-books/write_assets/$fileName",
+                contentBytes = local.readBytes(),
+                message = "Upload write asset $fileName"
+            )
+            uploaded += fileName
         }
     }
 

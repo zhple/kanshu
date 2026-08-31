@@ -1,5 +1,6 @@
 package com.kanshu.reader.reader
 
+import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -28,6 +29,7 @@ object TextPaginator {
         val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG).apply {
             textSize = textSizePx
             isAntiAlias = true
+            typeface = Typeface.create(Typeface.SERIF, Typeface.NORMAL)
         }
         val usableHeight = (heightPx - safetyPx).coerceAtLeast(1)
 
@@ -67,6 +69,8 @@ object TextPaginator {
             return listOf(ReaderPage(text, chapterIndex, chapterTitle))
         }
 
+        val lineBufferPx = ceil(lineHeightPx).toInt().coerceAtLeast(1)
+        val maxBlockHeight = (heightPx - lineBufferPx).coerceAtLeast(1)
         val pages = mutableListOf<ReaderPage>()
         var startLine = 0
         while (startLine < layout.lineCount) {
@@ -77,7 +81,7 @@ object TextPaginator {
             while (endLine < layout.lineCount) {
                 val top = layout.getLineTop(startLine)
                 val bottom = layout.getLineBottom(endLine)
-                if (bottom - top > heightPx) break
+                if (bottom - top > maxBlockHeight) break
                 lastFitting = endLine
                 endLine++
             }
@@ -121,6 +125,6 @@ object TextPaginator {
 
     /** 按行高估算一页大约多少行，用于安全边距 */
     fun suggestedSafetyPx(lineHeightPx: Float): Int {
-        return ceil(lineHeightPx * 0.35f).toInt().coerceAtLeast(8)
+        return ceil(lineHeightPx * 0.85f).toInt().coerceAtLeast(12)
     }
 }

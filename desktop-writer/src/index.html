@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>看书 · 写作</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-head">
+        <h1>看书写作</h1>
+        <p class="hint">与手机端共享 .draft.txt · 专注写作</p>
+      </div>
+      <div class="sidebar-actions">
+        <button id="btn-workspace" class="btn secondary">打开目录</button>
+        <button id="btn-new" class="btn primary">新建文稿</button>
+      </div>
+      <p id="workspace-label" class="workspace-label">未选择工作目录</p>
+      <div class="side-section">
+        <div class="side-section-title">文稿</div>
+        <ul id="draft-list" class="draft-list"></ul>
+      </div>
+      <div class="side-section">
+        <div class="side-section-title">章节大纲</div>
+        <ul id="outline-list" class="outline-list">
+          <li class="meta">插入「下一章」后显示</li>
+        </ul>
+      </div>
+      <div class="sidebar-foot">
+        <button id="btn-settings" class="btn ghost">设置</button>
+      </div>
+    </aside>
+
+    <main class="editor-pane">
+      <header class="toolbar">
+        <input id="title-input" type="text" placeholder="文稿标题" />
+        <div class="toolbar-actions">
+          <button id="btn-prev-page" class="btn ghost" title="上一页">←</button>
+          <span id="page-label">第 1 / 1 页</span>
+          <button id="btn-next-page" class="btn ghost" title="下一页">→</button>
+          <span class="sep"></span>
+          <button id="btn-chapter" class="btn secondary">下一章</button>
+          <button id="btn-image" class="btn secondary">插图</button>
+          <button id="btn-ai-continue" class="btn secondary" title="DeepSeek 续写">续写</button>
+          <button id="btn-ai-polish" class="btn secondary">润色</button>
+          <button id="btn-ai-expand" class="btn secondary">扩写</button>
+          <button id="btn-focus" class="btn ghost">专注</button>
+          <button id="btn-save" class="btn primary">保存</button>
+          <button id="btn-upload" class="btn secondary">上传 GitHub</button>
+        </div>
+      </header>
+      <div class="stats-bar">
+        <span id="stats-text">0 字 · 今日 0 / 1000</span>
+        <div class="goal-track"><div id="goal-fill" class="goal-fill"></div></div>
+        <span id="dirty-badge" class="dirty-badge hidden">未保存</span>
+      </div>
+      <p id="page-title" class="page-title">正文</p>
+      <div id="blocks" class="blocks"></div>
+      <p id="status" class="status"></p>
+    </main>
+  </div>
+
+  <dialog id="settings-dialog">
+    <form method="dialog" id="settings-form">
+      <h2>设置</h2>
+      <label>GitHub Token（勾选 repo）</label>
+      <input id="cfg-token" type="password" placeholder="ghp_..." autocomplete="off" />
+      <label>仓库 Owner</label>
+      <input id="cfg-owner" type="text" value="zhple" />
+      <label>仓库名</label>
+      <input id="cfg-repo" type="text" value="kanshu" />
+      <label>分支</label>
+      <input id="cfg-branch" type="text" value="main" />
+      <label>DeepSeek API Key（续写/润色/扩写）</label>
+      <input id="cfg-deepseek" type="password" placeholder="sk-..." autocomplete="off" />
+      <label>每日写作目标（字）</label>
+      <input id="cfg-goal" type="number" min="100" max="50000" value="1000" />
+      <div class="dialog-actions">
+        <button value="cancel" class="btn ghost">取消</button>
+        <button value="ok" class="btn primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="ai-dialog">
+    <form method="dialog" id="ai-form">
+      <h2 id="ai-dialog-title">AI 助手</h2>
+      <p class="hint">基于当前聚焦段落；结果会先预览再写入。</p>
+      <label>补充要求（可选）</label>
+      <textarea id="ai-hint" rows="3" placeholder="例如：偏虐、多对话、写到天黑"></textarea>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn ghost">取消</button>
+        <button value="ok" class="btn primary">生成</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="ai-preview-dialog">
+    <h2>AI 结果预览</h2>
+    <div id="ai-preview-body" class="ai-preview"></div>
+    <div class="dialog-actions">
+      <button id="ai-preview-discard" class="btn ghost">丢弃</button>
+      <button id="ai-preview-apply" class="btn primary">写入文稿</button>
+    </div>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

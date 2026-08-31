@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -63,6 +65,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.width
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kanshu.reader.data.prefs.AppThemeMode
 import com.kanshu.reader.music.MusicController
@@ -80,7 +83,9 @@ private val ReaderHorizontalPadding = 22.dp
 private val ReaderVerticalPadding = 14.dp
 /** Reserve space so pages don't sit under status/nav/toolbars */
 private val TopContentReserve = 72.dp
-private val BottomContentReserve = 72.dp
+/** 章节名 + 翻页按钮 + 内边距（不含系统导航栏） */
+private val BottomBarContentHeight = 84.dp
+private val BottomContentMin = 16.dp
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -92,7 +97,13 @@ fun ReaderScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val miniPlayerInset = miniPlayerBottomInset(musicController)
-    val bottomReserve = BottomContentReserve + miniPlayerInset
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val paginationBottomReserve = BottomBarContentHeight + navBarBottom + miniPlayerInset
+    val displayBottomReserve = if (state.showControls) {
+        BottomBarContentHeight + navBarBottom + miniPlayerInset
+    } else {
+        BottomContentMin + miniPlayerInset
+    }
     var showJumpDialog by remember { mutableStateOf(false) }
     var jumpInput by remember { mutableStateOf("") }
     var jumpError by remember { mutableStateOf<String?>(null) }
@@ -129,7 +140,7 @@ fun ReaderScreen(
                         (maxWidth - ReaderHorizontalPadding * 2).toPx().roundToInt()
                     }
                     val contentHeightPx = with(density) {
-                        (maxHeight - TopContentReserve - bottomReserve - ReaderVerticalPadding * 2)
+                        (maxHeight - TopContentReserve - paginationBottomReserve - ReaderVerticalPadding * 2)
                             .toPx()
                             .roundToInt()
                             .coerceAtLeast(1)
@@ -206,7 +217,7 @@ fun ReaderScreen(
                                         start = ReaderHorizontalPadding,
                                         end = ReaderHorizontalPadding,
                                         top = TopContentReserve,
-                                        bottom = bottomReserve
+                                        bottom = displayBottomReserve
                                     )
                                     .padding(vertical = ReaderVerticalPadding)
                             ) {

@@ -20,7 +20,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 data class MusicPlayerState(
+    /** 底部控制条是否展开显示 */
     val visible: Boolean = false,
+    /** 收纳到侧边 CD 芯片 */
+    val docked: Boolean = false,
     val expanded: Boolean = false,
     val playing: Boolean = false,
     val title: String = "",
@@ -33,7 +36,7 @@ data class MusicPlayerState(
 )
 
 /**
- * 应用级播放器：跨页面保活，配合底部可折叠迷你条。
+ * 应用级播放器：底部控制条 + 侧边 CD 收纳。
  */
 class MusicController(
     context: Context,
@@ -99,6 +102,7 @@ class MusicController(
         _state.update {
             it.copy(
                 visible = true,
+                docked = false,
                 expanded = it.expanded,
                 playing = true,
                 title = track.title,
@@ -119,7 +123,8 @@ class MusicController(
     }
 
     fun togglePlayPause() {
-        if (!_state.value.visible) return
+        val s = _state.value
+        if (!s.visible && !s.docked) return
         if (player.isPlaying) player.pause() else player.play()
     }
 
@@ -163,20 +168,30 @@ class MusicController(
         _state.update { it.copy(expanded = false) }
     }
 
-    /** 隐藏底部迷你条，音乐继续播放；进入歌单页会再显示。 */
-    fun dismissMiniBar() {
-        _state.update { it.copy(visible = false, expanded = false) }
+    /** 收起到侧边 CD，音乐继续播放。 */
+    fun dockToSide() {
+        _state.update { it.copy(visible = false, docked = true, expanded = false) }
     }
+
+    /** 从侧边 CD 展开底部控制条。 */
+    fun showPanel() {
+        _state.update { it.copy(visible = true, docked = false) }
+    }
+
+    /** @deprecated 使用 [dockToSide] */
+    fun dismissMiniBar() = dockToSide()
 
     fun showMiniBarIfActive() {
         if (queue.isNotEmpty() || player.isPlaying) {
-            _state.update { it.copy(visible = true) }
+            _state.update { it.copy(visible = true, docked = false) }
         }
     }
 
     fun hide() {
         player.pause()
-        _state.update { it.copy(visible = false, expanded = false, playing = false) }
+        _state.update {
+            it.copy(visible = false, docked = false, expanded = false, playing = false)
+        }
     }
 
     fun release() {

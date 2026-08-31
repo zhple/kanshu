@@ -2,6 +2,7 @@ package com.kanshu.reader.data
 
 import android.content.Context
 import com.kanshu.reader.data.ai.AiChatRepository
+import com.kanshu.reader.data.ai.DeepSeekClient
 import com.kanshu.reader.data.db.AppDatabase
 import com.kanshu.reader.data.prefs.ThemePreferences
 import com.kanshu.reader.data.remote.DefaultBooksSync
@@ -11,6 +12,7 @@ import com.kanshu.reader.data.remote.MusicSync
 import com.kanshu.reader.data.repo.BookRepository
 import com.kanshu.reader.data.repo.MusicRepository
 import com.kanshu.reader.music.MusicController
+import kotlinx.coroutines.flow.first
 
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
@@ -26,6 +28,9 @@ class AppContainer(context: Context) {
         filesDir = appContext.filesDir
     )
     val themePreferences = ThemePreferences(appContext)
+    val deepSeekClient = DeepSeekClient(
+        apiKeyProvider = { themePreferences.deepseekApiKey.first() }
+    )
     val defaultBooksSync = DefaultBooksSync(appContext, bookRepository)
     val githubBooksUploader = GithubBooksUploader(bookRepository, themePreferences)
     val githubMusicUploader = GithubMusicUploader(musicRepository, themePreferences)

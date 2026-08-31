@@ -6,11 +6,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -28,6 +30,7 @@ import com.kanshu.reader.ui.ai.AiSessionsViewModel
 import com.kanshu.reader.ui.library.LibraryScreen
 import com.kanshu.reader.ui.library.LibraryViewModel
 import com.kanshu.reader.ui.music.MiniPlayerBar
+import com.kanshu.reader.ui.music.MusicSideDock
 import com.kanshu.reader.ui.music.MusicScreen
 import com.kanshu.reader.ui.music.MusicViewModel
 import com.kanshu.reader.ui.reader.PdfReaderScreen
@@ -164,7 +167,8 @@ class MainActivity : ComponentActivity() {
                                         folderId = null,
                                         bookRepository = app.container.bookRepository,
                                         themePreferences = app.container.themePreferences,
-                                        githubBooksUploader = app.container.githubBooksUploader
+                                        githubBooksUploader = app.container.githubBooksUploader,
+                                        deepSeekClient = app.container.deepSeekClient
                                     )
                                 )
                                 WriteScreen(
@@ -186,7 +190,8 @@ class MainActivity : ComponentActivity() {
                                         folderId = folderId,
                                         bookRepository = app.container.bookRepository,
                                         themePreferences = app.container.themePreferences,
-                                        githubBooksUploader = app.container.githubBooksUploader
+                                        githubBooksUploader = app.container.githubBooksUploader,
+                                        deepSeekClient = app.container.deepSeekClient
                                     )
                                 )
                                 WriteScreen(
@@ -208,7 +213,8 @@ class MainActivity : ComponentActivity() {
                                         folderId = null,
                                         bookRepository = app.container.bookRepository,
                                         themePreferences = app.container.themePreferences,
-                                        githubBooksUploader = app.container.githubBooksUploader
+                                        githubBooksUploader = app.container.githubBooksUploader,
+                                        deepSeekClient = app.container.deepSeekClient
                                     )
                                 )
                                 WriteScreen(
@@ -287,6 +293,12 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             modifier = Modifier.align(Alignment.BottomCenter)
+                        )
+                        MusicSideDock(
+                            controller = app.container.musicController,
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(end = 10.dp)
                         )
                     }
                 }

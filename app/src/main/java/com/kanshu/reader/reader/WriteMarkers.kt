@@ -143,6 +143,54 @@ object WriteBlocks {
         return first.take(24)
     }
 
+    data class OutlineItem(
+        val title: String,
+        val blockIndex: Int,
+        val pageIndex: Int,
+        val charCount: Int
+    )
+
+    /** 纯文字字数（不含空白），按中文写作常见「字数」统计。 */
+    fun charCount(blocks: List<WriteBlock>): Int {
+        return blocks.sumOf { block ->
+            when (block) {
+                is WriteBlock.Paragraph -> block.text.count { !it.isWhitespace() }
+                is WriteBlock.Image -> 0
+            }
+        }
+    }
+
+    fun paragraphCount(blocks: List<WriteBlock>): Int {
+        return blocks.count { it is WriteBlock.Paragraph && it.text.isNotBlank() }
+    }
+
+    fun imageCount(blocks: List<WriteBlock>): Int {
+        return blocks.count { it is WriteBlock.Image }
+    }
+
+    fun outline(blocks: List<WriteBlock>): List<OutlineItem> {
+        val pages = buildPages(blocks)
+        val items = mutableListOf<OutlineItem>()
+        blocks.forEachIndexed { index, block ->
+            if (!isChapterStart(block)) return@forEachIndexed
+            val pageIndex = pages.indexOfFirst { index in it.startIndex until it.endExclusive }
+                .coerceAtLeast(0)
+            val page = pages.getOrNull(pageIndex)
+            val chars = if (page != null) {
+                charCount(blocks.subList(page.startIndex, page.endExclusive))
+            } else {
+                0
+            }
+            items += OutlineItem(
+                title = chapterTitleOf(block),
+                blockIndex = index,
+                pageIndex = pageIndex,
+                charCount = chars
+            )
+        }
+        return items
+    }
+
     /**
      * 按「章节标题」硬分页，章节内再按篇幅软分页。
      * 参考 Notion 分块编辑：不把整篇塞进一条超长滚动条。

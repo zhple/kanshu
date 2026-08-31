@@ -5,35 +5,56 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.kanshu.reader.data.ai.DeepSeekClient
 import com.kanshu.reader.data.prefs.ThemePreferences
 import com.kanshu.reader.data.remote.GithubBooksUploader
 import com.kanshu.reader.data.repo.BookRepository
 import com.kanshu.reader.reader.WriteBlock
 import com.kanshu.reader.reader.WriteBlocks
 import com.kanshu.reader.reader.WriteEditPage
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class WriteUiState(
     val loading: Boolean = false,
     val saving: Boolean = false,
+    val autoSaving: Boolean = false,
+    val dirty: Boolean = false,
     val title: String = "",
     val blocks: List<WriteBlock> = listOf(WriteBlock.Paragraph("")),
     val pages: List<WriteEditPage> = listOf(WriteEditPage("正文", 0, 1)),
+    val outline: List<WriteBlocks.OutlineItem> = emptyList(),
     val pageIndex: Int = 0,
     val saveFormat: BookRepository.WriteSaveFormat = BookRepository.WriteSaveFormat.TXT,
     val uploadToRemote: Boolean = false,
     val bookId: Long? = null,
     val chapterCount: Int = 0,
+    val charCount: Int = 0,
+    val sessionGain: Int = 0,
+    val dailyDone: Int = 0,
+    val dailyGoal: Int = 1000,
     val focusedBlockIndex: Int = 0,
+    val focusMode: Boolean = false,
+    val showOutline: Boolean = false,
+    val aiBusy: Boolean = false,
+    val aiPreview: String? = null,
+    val aiMode: DeepSeekClient.WriteAssistMode? = null,
+    val statusHint: String? = null,
     val error: String? = null,
     val savedMessage: String? = null,
     val savedBookId: Long? = null
@@ -46,7 +67,8 @@ class WriteViewModel(
     private val folderId: Long?,
     private val bookRepository: BookRepository,
     private val themePreferences: ThemePreferences,
-    private val githubBooksUploader: GithubBooksUploader
+    private val githubBooksUploader: GithubBooksUploader,
+    private val deepSeekClient: DeepSeekClient
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(WriteUiState(bookId = bookId, loading = bookId != null))
     val uiState: StateFlow<WriteUiState> = _uiState.asStateFlow()
@@ -55,8 +77,33 @@ class WriteViewModel(
         .map { it.isNotBlank() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    val hasDeepseekKey: StateFlow<Boolean> = themePreferences.deepseekApiKey
+        .map { it.isNotBlank() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    private var baselineChars = 0
+    private var lastSyncedSessionGain = 0
+    private var autoSaveJob: Job? = null
+    private var dailySyncJob: Job? = null
+
     init {
-        if (bookId != null) load(bookId)
+        if (bookId != null) load(bookId) else {
+            baselineChars = 0
+            startAutoSaveLoop()
+            startDailySyncLoop()
+        }
+        viewModelScope.launch {
+            combine(
+                themePreferences.writeDailyGoal,
+                themePreferences.writeDailyProgress
+            ) { goal, progress ->
+                goal to progress
+            }.collect { (goal, progress) ->
+                val today = todayKey()
+                val done = if (progress.second == today) progress.first else 0
+                _uiState.update { it.copy(dailyGoal = goal, dailyDone = done) }
+            }
+        }
     }
 
     private fun load(id: Long) {
@@ -72,6 +119,7 @@ class WriteViewModel(
                         BookRepository.WriteSaveFormat.PDF
                     else -> BookRepository.WriteSaveFormat.TXT
                 }
+                baselineChars = WriteBlocks.charCount(blocks)
                 _uiState.update {
                     rebuild(
                         it.copy(
@@ -81,10 +129,14 @@ class WriteViewModel(
                             bookId = id,
                             saveFormat = format,
                             focusedBlockIndex = 0,
-                            pageIndex = 0
+                            pageIndex = 0,
+                            dirty = false,
+                            sessionGain = 0
                         )
                     )
                 }
+                startAutoSaveLoop()
+                startDailySyncLoop()
             }.onFailure { e ->
                 _uiState.update {
                     it.copy(loading = false, error = e.message ?: "加载失败")
@@ -96,15 +148,26 @@ class WriteViewModel(
     private fun rebuild(state: WriteUiState): WriteUiState {
         val pages = WriteBlocks.buildPages(state.blocks)
         val pageIndex = state.pageIndex.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+        val chars = WriteBlocks.charCount(state.blocks)
+        val sessionGain = (chars - baselineChars).coerceAtLeast(0)
         return state.copy(
             pages = pages,
             pageIndex = pageIndex,
-            chapterCount = countChapters(WriteBlocks.serialize(state.blocks))
+            chapterCount = countChapters(WriteBlocks.serialize(state.blocks)),
+            outline = WriteBlocks.outline(state.blocks),
+            charCount = chars,
+            sessionGain = sessionGain
         )
     }
 
+    private fun markDirty(transform: (WriteUiState) -> WriteUiState) {
+        _uiState.update { state ->
+            rebuild(transform(state)).copy(dirty = true, statusHint = null)
+        }
+    }
+
     fun setTitle(value: String) {
-        _uiState.update { it.copy(title = value) }
+        markDirty { it.copy(title = value) }
     }
 
     fun setPageIndex(index: Int) {
@@ -114,42 +177,58 @@ class WriteViewModel(
         }
     }
 
+    fun jumpToOutline(item: WriteBlocks.OutlineItem) {
+        _uiState.update {
+            it.copy(
+                pageIndex = item.pageIndex.coerceIn(0, (it.pages.size - 1).coerceAtLeast(0)),
+                focusedBlockIndex = item.blockIndex,
+                showOutline = false
+            )
+        }
+    }
+
     fun setFocusedBlock(index: Int) {
         _uiState.update { it.copy(focusedBlockIndex = index.coerceAtLeast(0)) }
     }
 
+    fun toggleFocusMode() {
+        _uiState.update { it.copy(focusMode = !it.focusMode, showOutline = false) }
+    }
+
+    fun setShowOutline(show: Boolean) {
+        _uiState.update { it.copy(showOutline = show) }
+    }
+
     fun updateParagraph(index: Int, text: String) {
-        _uiState.update { state ->
+        markDirty { state ->
             val blocks = state.blocks.toMutableList()
-            if (index !in blocks.indices) return@update state
-            val current = blocks[index] as? WriteBlock.Paragraph ?: return@update state
+            if (index !in blocks.indices) return@markDirty state
+            val current = blocks[index] as? WriteBlock.Paragraph ?: return@markDirty state
             blocks[index] = current.copy(text = text)
-            rebuild(state.copy(blocks = blocks, focusedBlockIndex = index))
+            state.copy(blocks = blocks, focusedBlockIndex = index)
         }
     }
 
     fun setImageWidth(index: Int, widthPercent: Float) {
-        _uiState.update { state ->
+        markDirty { state ->
             val blocks = state.blocks.toMutableList()
-            val current = blocks.getOrNull(index) as? WriteBlock.Image ?: return@update state
+            val current = blocks.getOrNull(index) as? WriteBlock.Image ?: return@markDirty state
             blocks[index] = current.copy(widthPercent = widthPercent.coerceIn(0.3f, 1f))
-            rebuild(state.copy(blocks = blocks))
+            state.copy(blocks = blocks)
         }
     }
 
-    /** 在当前编辑页内拖拽排序（from/to 为页内局部下标）。 */
     fun moveWithinPage(fromLocal: Int, toLocal: Int) {
         if (fromLocal == toLocal) return
-        _uiState.update { state ->
-            val page = state.pages.getOrNull(state.pageIndex) ?: return@update state
+        markDirty { state ->
+            val page = state.pages.getOrNull(state.pageIndex) ?: return@markDirty state
             val from = page.startIndex + fromLocal
             val to = page.startIndex + toLocal
-            if (from !in state.blocks.indices || to !in state.blocks.indices) return@update state
-            // 页内重排不改分页边界，避免拖拽过程中页结构抖动
+            if (from !in state.blocks.indices || to !in state.blocks.indices) return@markDirty state
             if (from !in page.startIndex until page.endExclusive ||
                 to !in page.startIndex until page.endExclusive
             ) {
-                return@update state
+                return@markDirty state
             }
             val blocks = state.blocks.toMutableList()
             val item = blocks.removeAt(from)
@@ -158,51 +237,41 @@ class WriteViewModel(
         }
     }
 
-    fun moveBlock(index: Int, delta: Int) {
-        _uiState.update { state ->
-            val target = index + delta
-            if (index !in state.blocks.indices || target !in state.blocks.indices) return@update state
-            val blocks = state.blocks.toMutableList()
-            val item = blocks.removeAt(index)
-            blocks.add(target, item)
-            if (blocks.last() !is WriteBlock.Paragraph) {
-                blocks += WriteBlock.Paragraph("")
-            }
-            val rebuilt = rebuild(state.copy(blocks = blocks, focusedBlockIndex = target))
-            // 尽量留在包含该块的页
-            val pageIdx = rebuilt.pages.indexOfFirst { target in it.startIndex until it.endExclusive }
-                .coerceAtLeast(0)
-            rebuilt.copy(pageIndex = pageIdx)
-        }
-    }
-
     fun removeBlock(index: Int) {
-        _uiState.update { state ->
-            if (index !in state.blocks.indices) return@update state
+        markDirty { state ->
+            if (index !in state.blocks.indices) return@markDirty state
             val blocks = state.blocks.toMutableList()
             blocks.removeAt(index)
             if (blocks.isEmpty() || blocks.last() !is WriteBlock.Paragraph) {
                 blocks += WriteBlock.Paragraph("")
             }
-            rebuild(
-                state.copy(
-                    blocks = blocks,
-                    focusedBlockIndex = index.coerceIn(0, blocks.lastIndex)
-                )
+            state.copy(
+                blocks = blocks,
+                focusedBlockIndex = index.coerceIn(0, blocks.lastIndex)
             )
         }
     }
 
     fun setSaveFormat(format: BookRepository.WriteSaveFormat) {
-        _uiState.update { it.copy(saveFormat = format) }
+        _uiState.update { it.copy(saveFormat = format, dirty = true) }
     }
 
     fun setUploadToRemote(value: Boolean) {
         _uiState.update { it.copy(uploadToRemote = value) }
     }
 
+    fun setDailyGoal(goal: Int) {
+        viewModelScope.launch {
+            themePreferences.setWriteDailyGoal(goal)
+        }
+    }
+
     fun consumeSaved() {
         _uiState.update { it.copy(savedMessage = null, savedBookId = null) }
+    }
+
+    fun consumeStatus() {
+        _uiState.update { it.copy(statusHint = null) }
     }
 
     fun startNextChapter(subtitle: String = "") {
@@ -218,34 +287,35 @@ class WriteViewModel(
                 append(sub)
             }
         }
-        val blocks = state.blocks.toMutableList()
-        val focus = state.focusedBlockIndex.coerceIn(0, blocks.lastIndex)
-        val insertAt = when (val cur = blocks.getOrNull(focus)) {
-            is WriteBlock.Paragraph -> {
-                val base = cur.text.trimEnd()
-                blocks[focus] = cur.copy(
-                    text = if (base.isBlank()) heading else "$base\n\n$heading"
-                )
-                focus + 1
+        markDirty { s ->
+            val blocks = s.blocks.toMutableList()
+            val focus = s.focusedBlockIndex.coerceIn(0, blocks.lastIndex)
+            val insertAt = when (val cur = blocks.getOrNull(focus)) {
+                is WriteBlock.Paragraph -> {
+                    val base = cur.text.trimEnd()
+                    blocks[focus] = cur.copy(
+                        text = if (base.isBlank()) heading else "$base\n\n$heading"
+                    )
+                    focus + 1
+                }
+                else -> {
+                    blocks.add(focus + 1, WriteBlock.Paragraph(heading))
+                    focus + 2
+                }
             }
-            else -> {
-                blocks.add(focus + 1, WriteBlock.Paragraph(heading))
-                focus + 2
+            if (insertAt >= blocks.size || blocks.getOrNull(insertAt) !is WriteBlock.Paragraph) {
+                blocks.add(insertAt.coerceAtMost(blocks.size), WriteBlock.Paragraph(""))
             }
-        }
-        if (insertAt >= blocks.size || blocks.getOrNull(insertAt) !is WriteBlock.Paragraph) {
-            blocks.add(insertAt.coerceAtMost(blocks.size), WriteBlock.Paragraph(""))
-        }
-        val rebuilt = rebuild(
-            state.copy(
+            s.copy(
                 blocks = blocks,
                 focusedBlockIndex = insertAt.coerceIn(0, blocks.lastIndex)
             )
-        )
+        }
+        val rebuilt = _uiState.value
         val pageIdx = rebuilt.pages.indexOfFirst {
             rebuilt.focusedBlockIndex in it.startIndex until it.endExclusive
         }.coerceAtLeast(0)
-        _uiState.value = rebuilt.copy(pageIndex = pageIdx)
+        _uiState.update { it.copy(pageIndex = pageIdx) }
     }
 
     fun insertImage(contentResolver: ContentResolver, uri: Uri) {
@@ -253,7 +323,7 @@ class WriteViewModel(
             _uiState.update { it.copy(error = null) }
             runCatching {
                 val relative = bookRepository.importWriteImage(contentResolver, uri)
-                _uiState.update { state ->
+                markDirty { state ->
                     val blocks = state.blocks.toMutableList()
                     val page = state.pages.getOrNull(state.pageIndex)
                     val focus = state.focusedBlockIndex.coerceIn(
@@ -268,18 +338,17 @@ class WriteViewModel(
                     }
                     blocks.add(insertAt, WriteBlock.Image(relative, widthPercent = 1f))
                     blocks.add(insertAt + 1, WriteBlock.Paragraph(""))
-                    val rebuilt = rebuild(
-                        state.copy(
-                            blocks = blocks,
-                            saveFormat = BookRepository.WriteSaveFormat.PDF,
-                            focusedBlockIndex = insertAt + 1
-                        )
+                    state.copy(
+                        blocks = blocks,
+                        saveFormat = BookRepository.WriteSaveFormat.PDF,
+                        focusedBlockIndex = insertAt + 1
                     )
-                    val pageIdx = rebuilt.pages.indexOfFirst {
-                        insertAt in it.startIndex until it.endExclusive
-                    }.coerceAtLeast(0)
-                    rebuilt.copy(pageIndex = pageIdx)
                 }
+                val rebuilt = _uiState.value
+                val pageIdx = rebuilt.pages.indexOfFirst { page ->
+                    rebuilt.focusedBlockIndex - 1 in page.startIndex until page.endExclusive
+                }.coerceAtLeast(0)
+                _uiState.update { it.copy(pageIndex = pageIdx) }
             }.onFailure { e ->
                 _uiState.update { it.copy(error = e.message ?: "插入图片失败") }
             }
@@ -288,57 +357,175 @@ class WriteViewModel(
 
     fun resolveImageFile(path: String): File? = bookRepository.resolveWriteImage(path)
 
-    fun save() {
+    fun requestAiAssist(mode: DeepSeekClient.WriteAssistMode, hint: String = "") {
         viewModelScope.launch {
             val state = _uiState.value
-            _uiState.update { it.copy(saving = true, error = null) }
+            if (state.aiBusy) return@launch
+            _uiState.update { it.copy(aiBusy = true, error = null, aiPreview = null, aiMode = mode) }
             runCatching {
-                require(!WriteBlocks.contentLooksEmpty(state.blocks)) { "先写点内容再保存" }
-                val content = WriteBlocks.serialize(state.blocks)
-                val id = if (state.bookId != null) {
-                    bookRepository.updateWrittenBook(
-                        bookId = state.bookId,
-                        title = state.title,
-                        content = content,
-                        format = state.saveFormat
-                    )
-                    state.bookId
-                } else {
-                    bookRepository.createWrittenBook(
-                        title = state.title,
-                        content = content,
-                        format = state.saveFormat,
-                        folderId = folderId
-                    )
+                val focus = state.focusedBlockIndex.coerceIn(0, state.blocks.lastIndex)
+                val focusBlock = state.blocks.getOrNull(focus) as? WriteBlock.Paragraph
+                    ?: error("请先聚焦一段文字")
+                val focusText = focusBlock.text.trim()
+                if (mode != DeepSeekClient.WriteAssistMode.CONTINUE && focusText.isBlank()) {
+                    error("润色/扩写需要当前段落有内容")
                 }
-
-                var message = when (state.saveFormat) {
-                    BookRepository.WriteSaveFormat.TXT -> "已保存为 TXT"
-                    BookRepository.WriteSaveFormat.PDF -> "已保存为 PDF"
-                }
-                if (state.uploadToRemote) {
-                    val token = themePreferences.githubToken.first().trim()
-                    require(token.isNotEmpty()) {
-                        "要保存到仓库，请先在书架设置里填写 Token"
-                    }
-                    val book = bookRepository.getBook(id) ?: error("保存后找不到文稿")
-                    val upload = githubBooksUploader.uploadBook(book).getOrThrow()
-                    message = "$message，并上传到仓库：${upload.remoteId}"
-                }
-                id to message
-            }.onSuccess { (id, message) ->
+                val preceding = WriteBlocks.serialize(state.blocks.take(focus)).takeLast(2000)
+                deepSeekClient.writeAssist(
+                    mode = mode,
+                    title = state.title,
+                    precedingText = preceding,
+                    focusText = focusText,
+                    userHint = hint
+                )
+            }.onSuccess { text ->
                 _uiState.update {
-                    it.copy(
-                        saving = false,
-                        bookId = id,
-                        savedBookId = id,
-                        savedMessage = message
-                    )
+                    it.copy(aiBusy = false, aiPreview = text, aiMode = mode)
                 }
             }.onFailure { e ->
                 _uiState.update {
-                    it.copy(saving = false, error = e.message ?: "保存失败")
+                    it.copy(
+                        aiBusy = false,
+                        aiPreview = null,
+                        aiMode = null,
+                        error = e.message ?: "AI 助手失败"
+                    )
                 }
+            }
+        }
+    }
+
+    fun applyAiPreview() {
+        val state = _uiState.value
+        val preview = state.aiPreview?.trim().orEmpty()
+        val mode = state.aiMode ?: return
+        if (preview.isBlank()) return
+        markDirty { s ->
+            val blocks = s.blocks.toMutableList()
+            val focus = s.focusedBlockIndex.coerceIn(0, blocks.lastIndex)
+            val cur = blocks.getOrNull(focus) as? WriteBlock.Paragraph ?: return@markDirty s
+            blocks[focus] = when (mode) {
+                DeepSeekClient.WriteAssistMode.CONTINUE -> {
+                    val base = cur.text.trimEnd()
+                    cur.copy(text = if (base.isBlank()) preview else "$base\n\n$preview")
+                }
+                DeepSeekClient.WriteAssistMode.POLISH,
+                DeepSeekClient.WriteAssistMode.EXPAND -> cur.copy(text = preview)
+            }
+            s.copy(blocks = blocks, aiPreview = null, aiMode = null, statusHint = "已应用 AI 结果")
+        }
+    }
+
+    fun dismissAiPreview() {
+        _uiState.update { it.copy(aiPreview = null, aiMode = null) }
+    }
+
+    fun save(navigateAway: Boolean = true) {
+        viewModelScope.launch {
+            persist(navigateAway = navigateAway, fromAuto = false)
+        }
+    }
+
+    private fun startAutoSaveLoop() {
+        autoSaveJob?.cancel()
+        autoSaveJob = viewModelScope.launch {
+            while (isActive) {
+                delay(18_000L)
+                val s = _uiState.value
+                if (s.dirty && !s.saving && !s.loading && !WriteBlocks.contentLooksEmpty(s.blocks)) {
+                    persist(navigateAway = false, fromAuto = true)
+                }
+            }
+        }
+    }
+
+    private fun startDailySyncLoop() {
+        dailySyncJob?.cancel()
+        dailySyncJob = viewModelScope.launch {
+            while (isActive) {
+                delay(4_000L)
+                syncDailyProgress()
+            }
+        }
+    }
+
+    private suspend fun syncDailyProgress() {
+        val gain = _uiState.value.sessionGain
+        val delta = gain - lastSyncedSessionGain
+        if (delta <= 0) return
+        val done = themePreferences.addWriteDailyChars(delta, todayKey())
+        lastSyncedSessionGain = gain
+        _uiState.update { it.copy(dailyDone = done) }
+    }
+
+    private suspend fun persist(navigateAway: Boolean, fromAuto: Boolean) {
+        val state = _uiState.value
+        if (state.saving || state.autoSaving) return
+        _uiState.update {
+            it.copy(
+                saving = !fromAuto,
+                autoSaving = fromAuto,
+                error = null
+            )
+        }
+        runCatching {
+            require(!WriteBlocks.contentLooksEmpty(state.blocks)) { "先写点内容再保存" }
+            val content = WriteBlocks.serialize(state.blocks)
+            val id = if (state.bookId != null) {
+                bookRepository.updateWrittenBook(
+                    bookId = state.bookId,
+                    title = state.title,
+                    content = content,
+                    format = state.saveFormat
+                )
+                state.bookId
+            } else {
+                bookRepository.createWrittenBook(
+                    title = state.title,
+                    content = content,
+                    format = state.saveFormat,
+                    folderId = folderId
+                )
+            }
+
+            var message = when (state.saveFormat) {
+                BookRepository.WriteSaveFormat.TXT -> "已保存为 TXT"
+                BookRepository.WriteSaveFormat.PDF -> "已保存为 PDF"
+            }
+            if (!fromAuto && state.uploadToRemote) {
+                val token = themePreferences.githubToken.first().trim()
+                require(token.isNotEmpty()) {
+                    "要保存到仓库，请先在书架设置里填写 Token"
+                }
+                val book = bookRepository.getBook(id) ?: error("保存后找不到文稿")
+                val upload = githubBooksUploader.uploadBook(book).getOrThrow()
+                message = "$message，并上传到仓库：${upload.remoteId}"
+            }
+            syncDailyProgress()
+            id to message
+        }.onSuccess { (id, message) ->
+            baselineChars = WriteBlocks.charCount(_uiState.value.blocks)
+            lastSyncedSessionGain = 0
+            _uiState.update {
+                it.copy(
+                    saving = false,
+                    autoSaving = false,
+                    bookId = id,
+                    dirty = false,
+                    sessionGain = 0,
+                    statusHint = if (fromAuto) "已自动保存" else null,
+                    savedBookId = if (navigateAway && !fromAuto) id else null,
+                    savedMessage = if (navigateAway && !fromAuto) message else null
+                )
+            }
+        }.onFailure { e ->
+            _uiState.update {
+                it.copy(
+                    saving = false,
+                    autoSaving = false,
+                    error = if (fromAuto) null else (e.message ?: "保存失败"),
+                    statusHint = if (fromAuto) "自动保存失败：${e.message ?: "未知错误"}" else null
+                )
             }
         }
     }
@@ -355,12 +542,16 @@ class WriteViewModel(
             }
         }
 
+        private fun todayKey(): String =
+            SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
         fun factory(
             bookId: Long?,
             folderId: Long?,
             bookRepository: BookRepository,
             themePreferences: ThemePreferences,
-            githubBooksUploader: GithubBooksUploader
+            githubBooksUploader: GithubBooksUploader,
+            deepSeekClient: DeepSeekClient
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -369,7 +560,8 @@ class WriteViewModel(
                     folderId,
                     bookRepository,
                     themePreferences,
-                    githubBooksUploader
+                    githubBooksUploader,
+                    deepSeekClient
                 ) as T
             }
         }

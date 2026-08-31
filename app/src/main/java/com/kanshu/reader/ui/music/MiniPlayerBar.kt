@@ -79,7 +79,7 @@ fun MiniPlayerBar(
                 state = state,
                 onToggleExpand = controller::toggleExpanded,
                 onTogglePlay = controller::togglePlayPause,
-                onDismiss = controller::dismissMiniBar,
+                onDismiss = controller::dockToSide,
                 onOpenPlaylist = onOpenPlaylist
             )
             AnimatedVisibility(
@@ -149,7 +149,7 @@ private fun CollapsedRow(
             )
         }
         IconButton(onClick = onDismiss) {
-            Icon(Icons.Default.Close, contentDescription = "隐藏迷你条")
+            Icon(Icons.Default.Close, contentDescription = "收起到侧边")
         }
         TextButton(onClick = onOpenPlaylist) { Text("歌单") }
     }

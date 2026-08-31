@@ -11,6 +11,6 @@ import com.kanshu.reader.music.MusicController
 @Composable
 fun miniPlayerBottomInset(controller: MusicController): Dp {
     val state by controller.state.collectAsStateWithLifecycle()
-    if (!state.visible) return 0.dp
+    if (!state.visible || state.docked) return 0.dp
     return if (state.expanded) 200.dp else 96.dp
 }
